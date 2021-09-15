@@ -72,12 +72,7 @@ char index_html[] PROGMEM = R"=====(
       event.preventDefault();
       submitVal('b', dir);
     }
-    
-    function onSpeed(event, dir) {
-      event.preventDefault();
-      submitVal('s', dir);
-    }
-    
+        
     function submitVal(name, val) {
       var xhttp = new XMLHttpRequest();
       xhttp.open('GET', 'set?' + name + '=' + val, true);
@@ -90,9 +85,15 @@ char index_html[] PROGMEM = R"=====(
       //console.log(dir);
     }
 
+    function onClickWV(event, dir) {
+      event.preventDefault();
+      submitVal('wv', dir);
+      //console.log(dir);
+    }
+
     function onClickTotal(event, dir) {
       event.preventDefault();
-      submitVal('total', dir);
+      submitVal('wt', dir);
       //console.log(dir);
     }
 
@@ -107,8 +108,6 @@ char index_html[] PROGMEM = R"=====(
       submitVal('thirty', dir);
       //console.log(dir);
     }
-
-
     
   </script>
 
@@ -161,7 +160,7 @@ char index_html[] PROGMEM = R"=====(
     ul#modes li a {
       min-width:220px;
     }
-
+    
     ul.control li a {
       min-width:60px;
       min-height:24px;
@@ -177,7 +176,10 @@ char index_html[] PROGMEM = R"=====(
 
     ul li a.active {
       border:2px solid #909090;
+      background:#4A4A4A;
     }
+
+    ul li a.
   </style>
 </head>
 <body>
@@ -185,7 +187,7 @@ char index_html[] PROGMEM = R"=====(
   <div class='flex-row'>
   <div class='flex-col'>
   <div><canvas id='color-canvas' width='360' height='360'></canvas><br/></div>
-  <div><input type='text' id='color-value' oninput='onColor(event, this.value)'/></div>
+  <div><input type='text' id='color-value' value='0xFF5900' oninput='onColor(event, this.value)'/></div>
 
   <div>
     <ul class='control'>
@@ -195,17 +197,11 @@ char index_html[] PROGMEM = R"=====(
     </ul>
 
     <ul class='control'>
-      <li>Speed:</li>
-      <li><a href='#' onclick="onSpeed(event, '-')">&#8722;</a></li>
-      <li><a href='#' onclick="onSpeed(event, '+')">&#43;</a></li>
-    </ul>
-
-    <ul class='control'>
       <li>Data:</li>
-      <li><input type="checkbox" id="daily-avg" name="daily-avg" clicked="true" value="Daily Average" oninput='onClickDA(event, this.checked)'><label for="daily-avg">24HR HNT Avg</label><br></li>
-      <li><input type="checkbox" id="total" name="total" clicked="true" value="Total" oninput='onClickTotal(event, this.checked)'><label for="total">Wallet Total</label><br></li>
-      <li><input type="checkbox" id="witnesses" name="witnesses" clicked="true" value="Witnesses" oninput='onClickWitnesses(event, this.checked)'><label for="witnesses">Witnesses</label><br></li>
-      <li><input type="checkbox" id="thirty-day-total" name="thirty-day-total" clicked="true" value="Thirty Day Total" oninput='onClick30Day(event, this.checked)'><label for="thirty-day-total">30-Day Total</label><br></li>
+      <li><input type="checkbox" id="daily-avg" name="daily-avg" checked="true" value="Daily Average" oninput='onClickDA(event, this.checked)'><label for="daily-avg">24HR HNT Avg</label><br></li>
+      <li><input type="checkbox" id="total" name="total" checked="true" value="Total" oninput='onClickTotal(event, this.checked)'><label for="total">Wallet Total</label><br></li>
+      <li><input type="checkbox" id="witnesses" name="witnesses" checked="true" value="Witnesses" oninput='onClickWitnesses(event, this.checked)'><label for="witnesses">Witnesses</label><br></li>
+      <li><input type="checkbox" id="thirty-day-total" name="thirty-day-total" checked="true" value="Thirty Day Total" oninput='onClick30Day(event, this.checked)'><label for="thirty-day-total">30-Day Total</label><br></li>
       
     </ul>
   </div>
