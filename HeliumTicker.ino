@@ -179,12 +179,15 @@ void srv_handle_index_html() {
   server.send_P(200, "text/html", index_html);
 }
 
-void srv_handle_get_data() {
+void srv_handle_set_data() {
   for (uint8_t i = 0; i < server.args(); i++) {
     if (server.argName(i) == "daily-average") {
-      char result[8];
-      dtostrf(daily_average, 6, 2, result);
-      server.send_P(200, "text/html", result);
+      if (server.arg(i) == "true") {
+        display_daily_average = true;
+      } else {
+        display_daily_average = false;
+      }
+      server.send_P(200, "text/html", "OK");
       return;
     }
   }
