@@ -103,7 +103,7 @@ void setup() {
 
   Serial.println("HTTP server setup");
   server.on("/", srv_handle_index_html);
-  server.on("/set", srv_handle_set);
+  server.on("/set", srv_handle_set_data);
   server.on("/getStat", srv_handle_get_stat);
   server.onNotFound(srv_handle_not_found);
   server.begin();

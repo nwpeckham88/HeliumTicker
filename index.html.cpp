@@ -54,11 +54,15 @@ char index_html[] PROGMEM = R"=====(
       });
 
       // Load all the stats to display. We use the checkbox id to refer to the "stat" throughout the code. The results are hardcoded for now.
-      for (let stat of document.getElementsByClassName("stat")) {
-        getStat(stat);
-      }
+      refreshStats();
       
     });
+
+    function refreshStats() {
+        for (let stat of document.getElementsByClassName("stat")) {
+        getStat(stat);
+      }
+    }
     
     function initMode(mode, index) {
       mode.addEventListener('click', (event) => onMode(event, index));
@@ -99,13 +103,7 @@ char index_html[] PROGMEM = R"=====(
       req.open('GET', "set?" + checkbox.id + "&status=" + checkboxString(checkbox.checked));
       req.onload = function() {
         if (req.status == 200) {
-          if (this.responseText == "true") {
-            checkbox.checked = true;
-          } else {
-            checkbox.checked = false;
-          }
-        } else {
-          checkbox.checked = "false";
+          refreshStats();
         }
       }
       req.send();
