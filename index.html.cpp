@@ -11,47 +11,53 @@ char index_html[] PROGMEM = R"=====(
     var colorCanvas = null;
     
     window.addEventListener('DOMContentLoaded', (event) => {
-        // init the canvas color picker
-    colorCanvas = document.getElementById('color-canvas');
-    var colorctx = colorCanvas.getContext('2d');
-  
-    // Create color gradient
-    var gradient = colorctx.createLinearGradient(0, 0, colorCanvas.width - 1, 0);
-    gradient.addColorStop(0,    "rgb(255,   0,   0)");
-    gradient.addColorStop(0.16, "rgb(255,   0, 255)");
-    gradient.addColorStop(0.33, "rgb(0,     0, 255)");
-    gradient.addColorStop(0.49, "rgb(0,   255, 255)");
-    gradient.addColorStop(0.66, "rgb(0,   255,   0)");
-    gradient.addColorStop(0.82, "rgb(255, 255,   0)");
-    gradient.addColorStop(1,    "rgb(255,   0,   0)");
-  
-    // Apply gradient to canvas
-    colorctx.fillStyle = gradient;
-    colorctx.fillRect(0, 0, colorCanvas.width - 1, colorCanvas.height - 1);
-  
-    // Create semi transparent gradient (white -> transparent -> black)
-    gradient = colorctx.createLinearGradient(0, 0, 0, colorCanvas.height - 1);
-    gradient.addColorStop(0,    "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.48, "rgba(255, 255, 255, 0)");
-    gradient.addColorStop(0.52, "rgba(0,     0,   0, 0)");
-    gradient.addColorStop(1,    "rgba(0,     0,   0, 1)");
-  
-    // Apply gradient to canvas
-    colorctx.fillStyle = gradient;
-    colorctx.fillRect(0, 0, colorCanvas.width - 1, colorCanvas.height - 1);
-
+          // init the canvas color picker
+      colorCanvas = document.getElementById('color-canvas');
+      var colorctx = colorCanvas.getContext('2d');
     
-    // setup the canvas click listener
-    colorCanvas.addEventListener('click', (event) => {
-      var imageData = colorCanvas.getContext('2d').getImageData(event.offsetX, event.offsetY, 1, 1);
+      // Create color gradient
+      var gradient = colorctx.createLinearGradient(0, 0, colorCanvas.width - 1, 0);
+      gradient.addColorStop(0,    "rgb(255,   0,   0)");
+      gradient.addColorStop(0.16, "rgb(255,   0, 255)");
+      gradient.addColorStop(0.33, "rgb(0,     0, 255)");
+      gradient.addColorStop(0.49, "rgb(0,   255, 255)");
+      gradient.addColorStop(0.66, "rgb(0,   255,   0)");
+      gradient.addColorStop(0.82, "rgb(255, 255,   0)");
+      gradient.addColorStop(1,    "rgb(255,   0,   0)");
+    
+      // Apply gradient to canvas
+      colorctx.fillStyle = gradient;
+      colorctx.fillRect(0, 0, colorCanvas.width - 1, colorCanvas.height - 1);
+    
+      // Create semi transparent gradient (white -> transparent -> black)
+      gradient = colorctx.createLinearGradient(0, 0, 0, colorCanvas.height - 1);
+      gradient.addColorStop(0,    "rgba(255, 255, 255, 1)");
+      gradient.addColorStop(0.48, "rgba(255, 255, 255, 0)");
+      gradient.addColorStop(0.52, "rgba(0,     0,   0, 0)");
+      gradient.addColorStop(1,    "rgba(0,     0,   0, 1)");
+    
+      // Apply gradient to canvas
+      colorctx.fillStyle = gradient;
+      colorctx.fillRect(0, 0, colorCanvas.width - 1, colorCanvas.height - 1);
   
-      var selectedColor = 'rgb(' + imageData.data[0] + ',' + imageData.data[1] + ',' + imageData.data[2] + ')'; 
-      //console.log('click: ' + event.offsetX + ', ' + event.offsetY + ', ' + selectedColor);
-      document.getElementById('color-value').value = selectedColor;
-  
-      selectedColor = imageData.data[0] * 65536 + imageData.data[1] * 256 + imageData.data[2];
-      submitVal('c', selectedColor);
-    });
+      
+      // setup the canvas click listener
+      colorCanvas.addEventListener('click', (event) => {
+        var imageData = colorCanvas.getContext('2d').getImageData(event.offsetX, event.offsetY, 1, 1);
+    
+        var selectedColor = 'rgb(' + imageData.data[0] + ',' + imageData.data[1] + ',' + imageData.data[2] + ')'; 
+        //console.log('click: ' + event.offsetX + ', ' + event.offsetY + ', ' + selectedColor);
+        document.getElementById('color-value').value = selectedColor;
+    
+        selectedColor = imageData.data[0] * 65536 + imageData.data[1] * 256 + imageData.data[2];
+        submitVal('c', selectedColor);
+      });
+
+      // Load all the stats to display. We use the checkbox id to refer to the "stat" throughout the code. The results are hardcoded for now.
+      for (let stat of document.getElementsByClassName("stat")) {
+        getStat(stat);
+      }
+      
     });
     
     function initMode(mode, index) {
@@ -79,34 +85,48 @@ char index_html[] PROGMEM = R"=====(
       xhttp.send();
     }
     
-    function onClickDA(event, dir) {
-      event.preventDefault();
-      submitVal('da', dir);
-      //console.log(dir);
+    function checkboxString(checked){
+      if(checked){
+        return "true";
+      } else {
+        return "false";
+      }
     }
-
-    function onClickWV(event, dir) {
+    
+    function onChangeStat(event, checkbox) {
       event.preventDefault();
-      submitVal('wv', dir);
-      //console.log(dir);
+      let req = new XMLHttpRequest();
+      req.open('GET', "set?" + checkbox.id + "&status=" + checkboxString(checkbox.checked));
+      req.onload = function() {
+        if (req.status == 200) {
+          if (this.responseText == "true") {
+            checkbox.checked = true;
+          } else {
+            checkbox.checked = false;
+          }
+        } else {
+          checkbox.checked = "false";
+        }
+      }
+      req.send();
     }
-
-    function onClickTotal(event, dir) {
+    
+    function getStat(stat) {
       event.preventDefault();
-      submitVal('wt', dir);
-      //console.log(dir);
-    }
-
-    function onClickWitnesses(event, dir) {
-      event.preventDefault();
-      submitVal('witnesses', dir);
-      //console.log(dir);
-    }
-
-    function onClick30Day(event, dir) {
-      event.preventDefault();
-      submitVal('thirty', dir);
-      //console.log(dir);
+      let req = new XMLHttpRequest();
+      req.open('GET', "getStat?" + stat.id);
+      req.onload = function() {
+        if (req.status == 200) {
+          if (this.responseText == "true") {
+            stat.checked = true;
+          } else {
+            stat.checked = false;
+          }
+        } else {
+          stat.checked = "false";
+        }
+      }
+      req.send();
     }
     
   </script>
@@ -196,13 +216,12 @@ char index_html[] PROGMEM = R"=====(
       <li><a href='#' onclick="onBrightness(event, '+')">&#9728;</a></li>
     </ul>
 
-    <ul class='control'>
+    <ul class='control' id='stats-form'>
       <li>Data:</li>
-      <li><input type="checkbox" id="daily-avg" name="daily-avg" checked="true" value="Daily Average" oninput='onClickDA(event, this.checked)'><label for="daily-avg">24HR HNT Avg</label><br></li>
-      <li><input type="checkbox" id="total" name="total" checked="true" value="Total" oninput='onClickTotal(event, this.checked)'><label for="total">Wallet Total</label><br></li>
-      <li><input type="checkbox" id="witnesses" name="witnesses" checked="true" value="Witnesses" oninput='onClickWitnesses(event, this.checked)'><label for="witnesses">Witnesses</label><br></li>
-      <li><input type="checkbox" id="thirty-day-total" name="thirty-day-total" checked="true" value="Thirty Day Total" oninput='onClick30Day(event, this.checked)'><label for="thirty-day-total">30-Day Total</label><br></li>
-      
+      <li><input type="checkbox" id="daily-average" name="daily-average" class="stat" value="Daily Average" oninput='onChangeStat(event, this)'><label for="daily-avg">24HR HNT Avg</label><br></li>
+      <li><input type="checkbox" id="total" name="total" class="stat" value="Total" oninput='onChangeStat(event, this)'><label for="total">Wallet Total</label><br></li>
+      <li><input type="checkbox" id="witnesses" name="witnesses" class="stat" value="Witnesses" oninput='onChangeStat(event, this)'><label for="witnesses">Witnesses</label><br></li>
+      <li><input type="checkbox" id="thirty-day-total" name="thirty-day-total" class="stat" value="Thirty Day Total" oninput='onChangeStat(event, this)'><label for="thirty-day-total">30-Day Total</label><br></li>
     </ul>
   </div>
   </div>

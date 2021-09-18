@@ -21,9 +21,6 @@
 
 #define PIN 5
 
-#include <WS2812FX.h>
-
-
 #define WIFI_SSID "CenturyLink5739"
 #define WIFI_PASSWORD "jjugy4z5jdnw76"
 
@@ -38,9 +35,9 @@ extern const char main_js[];
 // QUICKFIX...See https://github.com/esp8266/Arduino/issues/263
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
+#define bool_to_str(a) ((a)?("true"):("false"))
 
 #define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
-#define LED_COUNT 24
 
 #define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
 #define HTTP_PORT 80
@@ -71,17 +68,12 @@ extern const char main_js[];
 // Arduino.  When held that way, the first pixel is at the top right, and
 // lines are arranged in columns, progressive order.  The shield uses
 // 800 KHz (v2) pixels that expect GRB color data.
-Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(5, 8, PIN,
+Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(32, 8, PIN,
   NEO_MATRIX_BOTTOM    + NEO_MATRIX_RIGHT +
   NEO_MATRIX_COLUMNS + NEO_MATRIX_PROGRESSIVE,
   NEO_GRB            + NEO_KHZ800);
 //WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 WEB_SERVER server(HTTP_PORT);
-
-int16_t x = matrix.width();
-uint8_t color_index = 0;
-char text[] = "Howdy";
-int scroll_limit = sizeof(text) * 6; // each text character is 6 pixels wide
 
 unsigned long auto_last_change = 0;
 unsigned long last_wifi_check_time = 0;
@@ -91,6 +83,8 @@ bool display_wallet_value = true;
 bool display_daily_total = true;
 bool display_thirty_day_total = true;
 bool display_witnesses = true;
+
+float daily_average = 0;
 
 void setup() {
   // put your setup code here, to run once:
@@ -110,6 +104,7 @@ void setup() {
   Serial.println("HTTP server setup");
   server.on("/", srv_handle_index_html);
   server.on("/set", srv_handle_set);
+  server.on("/getStat", srv_handle_get_stat);
   server.onNotFound(srv_handle_not_found);
   server.begin();
   Serial.println("HTTP server started.");
@@ -124,15 +119,8 @@ void loop() {
   server.handleClient();
   
   matrix.fillScreen(0);
-  matrix.setCursor(x, 0);
-  matrix.print(text);
-
-  if(--x < -scroll_limit) {
-    x = matrix.width();
-    color_index = 0; // reset the rainbow color index
-  }
-  matrix.setTextColor(color_wheel(color_index));
-  color_index += max(1, 256 / scroll_limit);
+  matrix.setCursor(0, 0);
+  matrix.print(F("Howdy"));
   matrix.show();
   delay(100);
 
@@ -145,22 +133,6 @@ void loop() {
       Serial.println("OK");
     }
     last_wifi_check_time = now;
-  }
-}
-
-uint16_t color_wheel(uint8_t pos) {
-  pos = 255 - pos;
-  if(pos < 85) {
-//  return ((uint32_t)(255 - pos * 3) << 16) | ((uint32_t)(0) << 8) | (pos * 3);
-    return matrix.Color((uint16_t)(255 - pos * 3), 0, (pos * 3));
-  } else if(pos < 170) {
-    pos -= 85;
-//  return ((uint32_t)(0) << 16) | ((uint32_t)(pos * 3) << 8) | (255 - pos * 3);
-    return matrix.Color(0, (uint32_t)(pos * 3), (255 - pos * 3));
-  } else {
-    pos -= 170;
-//  return ((uint32_t)(pos * 3) << 16) | ((uint32_t)(255 - pos * 3) << 8) | (0);
-    return matrix.Color((uint16_t)(pos * 3), (uint32_t)(255 - pos * 3), 0);
   }
 }
 
@@ -205,6 +177,28 @@ void srv_handle_not_found() {
 
 void srv_handle_index_html() {
   server.send_P(200, "text/html", index_html);
+}
+
+void srv_handle_get_data() {
+  for (uint8_t i = 0; i < server.args(); i++) {
+    if (server.argName(i) == "daily-average") {
+      char result[8];
+      dtostrf(daily_average, 6, 2, result);
+      server.send_P(200, "text/html", result);
+      return;
+    }
+  }
+}
+
+void srv_handle_get_stat() {
+  for (uint8_t i = 0; i < server.args(); i++) {
+    if (server.argName(i) == "daily-average") {
+      server.send_P(200, "text/html", bool_to_str(display_daily_average));
+      return;
+    } else {
+      server.send_P(200, "text/html", "false");
+    }
+  }
 }
 
 
