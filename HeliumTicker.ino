@@ -238,9 +238,9 @@ void srv_handle_set() {
 
     if (server.argName(i) == "thirty-day-total") {
       if (server.arg(i) == "true") {
-        display_witnesses = true;
+        display_thirty_day_total = true;
       } else {
-        display_witnesses = false;
+        display_thirty_day_total = false;
       }
       server.send_P(200, "text/html", "OK");
     }
@@ -249,7 +249,7 @@ void srv_handle_set() {
       uint32_t tmp = (uint32_t) strtol(server.arg(i).c_str(), NULL, 10);
       if (tmp >= 0x000000 && tmp <= 0xFFFFFF) {
         //matrix.setColor(tmp);
-         matrix.setTextColor(tmp);
+        matrix.setTextColor(tmp);
       }
     }
 
