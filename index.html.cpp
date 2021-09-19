@@ -218,6 +218,7 @@ char index_html[] PROGMEM = R"=====(
       <li>Data:</li>
       <li><input type="checkbox" id="daily-average" name="daily-average" class="stat" value="Daily Average" oninput='onChangeStat(event, this)'><label for="daily-avg">24HR HNT Avg</label><br></li>
       <li><input type="checkbox" id="total" name="total" class="stat" value="Total" oninput='onChangeStat(event, this)'><label for="total">Wallet Total</label><br></li>
+      <li><input type="checkbox" id="daily-total" name="daily-total" class="stat" value="Daily Total" oninput='onChangeStat(event, this)'><label for="daily-total">24HR HNT Total</label><br></li>
       <li><input type="checkbox" id="witnesses" name="witnesses" class="stat" value="Witnesses" oninput='onChangeStat(event, this)'><label for="witnesses">Witnesses</label><br></li>
       <li><input type="checkbox" id="thirty-day-total" name="thirty-day-total" class="stat" value="Thirty Day Total" oninput='onChangeStat(event, this)'><label for="thirty-day-total">30-Day Total</label><br></li>
     </ul>

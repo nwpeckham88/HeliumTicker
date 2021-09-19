@@ -16,7 +16,7 @@
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #ifndef PSTR
- #define PSTR // Make Arduino Due happy
+#define PSTR // Make Arduino Due happy
 #endif
 
 #define PIN 5
@@ -69,9 +69,9 @@ extern const char main_js[];
 // lines are arranged in columns, progressive order.  The shield uses
 // 800 KHz (v2) pixels that expect GRB color data.
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(32, 8, PIN,
-  NEO_MATRIX_BOTTOM    + NEO_MATRIX_RIGHT +
-  NEO_MATRIX_COLUMNS + NEO_MATRIX_PROGRESSIVE,
-  NEO_GRB            + NEO_KHZ800);
+                            NEO_MATRIX_BOTTOM    + NEO_MATRIX_RIGHT +
+                            NEO_MATRIX_COLUMNS + NEO_MATRIX_PROGRESSIVE,
+                            NEO_GRB            + NEO_KHZ800);
 //WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 WEB_SERVER server(HTTP_PORT);
 
@@ -103,7 +103,7 @@ void setup() {
 
   Serial.println("HTTP server setup");
   server.on("/", srv_handle_index_html);
-  server.on("/set", srv_handle_set_data);
+  server.on("/set", srv_handle_set);
   server.on("/getStat", srv_handle_get_stat);
   server.onNotFound(srv_handle_not_found);
   server.begin();
@@ -117,7 +117,7 @@ void loop() {
   unsigned long now = millis();
 
   server.handleClient();
-  
+
   matrix.fillScreen(0);
   matrix.setCursor(0, 0);
   matrix.print(F("Howdy"));
@@ -179,7 +179,26 @@ void srv_handle_index_html() {
   server.send_P(200, "text/html", index_html);
 }
 
-void srv_handle_set_data() {
+void srv_handle_get_stat() {
+  for (uint8_t i = 0; i < server.args(); i++) {
+    if (server.argName(i) == "daily-average") {
+      server.send_P(200, "text/html", bool_to_str(display_daily_average));
+      return;
+    } else if (server.argName(i) == "total") {
+      server.send_P(200, "text/html", bool_to_str(display_wallet_value));
+    } else if (server.argName(i) == "daily-total") {
+      server.send_P(200, "text/html", bool_to_str(display_daily_total));
+    } else if (server.argName(i) == "thirty-day-total") {
+      server.send_P(200, "text/html", bool_to_str(display_thirty_day_total));
+    } else if (server.argName(i) == "witnesses") {
+      server.send_P(200, "text/html", bool_to_str(display_witnesses));
+    } else {
+      server.send_P(200, "text/html", "false");
+    }
+  }
+}
+
+void srv_handle_set() {
   for (uint8_t i = 0; i < server.args(); i++) {
     if (server.argName(i) == "daily-average") {
       if (server.arg(i) == "true") {
@@ -188,81 +207,62 @@ void srv_handle_set_data() {
         display_daily_average = false;
       }
       server.send_P(200, "text/html", "OK");
-      return;
     }
-  }
-}
 
-void srv_handle_get_stat() {
-  for (uint8_t i = 0; i < server.args(); i++) {
-    if (server.argName(i) == "daily-average") {
-      server.send_P(200, "text/html", bool_to_str(display_daily_average));
-      return;
-    } else {
-      server.send_P(200, "text/html", "false");
+    if (server.argName(i) == "daily-total") {
+      if (server.arg(i) == "true") {
+        display_daily_total = true;
+      } else {
+        display_daily_total = false;
+      }
+      server.send_P(200, "text/html", "OK");
     }
-  }
-}
 
+    if (server.argName(i) == "total") {
+      if (server.arg(i) == "true") {
+        display_wallet_value = true;
+      } else {
+        display_wallet_value = false;
+      }
+      server.send_P(200, "text/html", "OK");
+    }
 
-void srv_handle_set() {
-  for (uint8_t i = 0; i < server.args(); i++) {
+    if (server.argName(i) == "witnesses") {
+      if (server.arg(i) == "true") {
+        display_witnesses = true;
+      } else {
+        display_witnesses = false;
+      }
+      server.send_P(200, "text/html", "OK");
+    }
+
+    if (server.argName(i) == "thirty-day-total") {
+      if (server.arg(i) == "true") {
+        display_witnesses = true;
+      } else {
+        display_witnesses = false;
+      }
+      server.send_P(200, "text/html", "OK");
+    }
+
     if (server.argName(i) == "c") {
       uint32_t tmp = (uint32_t) strtol(server.arg(i).c_str(), NULL, 10);
       if (tmp >= 0x000000 && tmp <= 0xFFFFFF) {
         //matrix.setColor(tmp);
+         matrix.setTextColor(tmp);
       }
     }
 
     if (server.argName(i) == "b") {
       if (server.arg(i)[0] == '-') {
         matrix.setBrightness(matrix.getBrightness() * 0.8);
-      } else if (server.arg(i)[0] == ' ') {
+      } else if (server.arg(i)[0] == '+') {
         matrix.setBrightness(min(max(matrix.getBrightness(), 5) * 1.2, 255));
       } else { // set brightness directly
         uint8_t tmp = (uint8_t) strtol(server.arg(i).c_str(), NULL, 10);
         matrix.setBrightness(tmp);
       }
       Serial.print("brightness is "); Serial.println(matrix.getBrightness());
-    }
-
-    if (server.argName(i) == "da") {
-      if (server.arg(i)[0] == 'true') {
-        display_daily_average = true;
-      } else {
-        display_daily_average = false;
-      }
-    }
-
-    if (server.argName(i) == "wv") {
-      if (server.arg(i)[0] == 'true') {
-        display_wallet_value = true;
-      } else {
-        display_wallet_value = false;
-      }
-    }
-
-    if (server.argName(i) == "dt") {
-      if (server.arg(i)[0] == 'true') {
-        display_daily_total = true;
-      } else {
-        display_daily_total = false;
-      }
-    }
-
-    if (server.argName(i) == "witnesses") {
-      if (server.arg(i)[0] == 'true') {
-        display_witnesses = true;
-      } else {
-        display_witnesses = false;
-      }
-    }
-    if (server.argName(i) == "thirty") {
-      if (server.arg(i)[0] == 'true') {
-        display_thirty_day_total = true;
-      } else {
-        display_thirty_day_total = false;
-      }
     }
   }
   server.send(200, "text/plain", "OK");
