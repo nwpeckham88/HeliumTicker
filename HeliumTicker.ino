@@ -22,7 +22,7 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
-#define PIN 5
+#define PIN D5
 
 #define WIFI_SSID "CenturyLink5739"
 #define WIFI_PASSWORD "jjugy4z5jdnw76"
@@ -72,8 +72,8 @@ extern const char main_js[];
 // lines are arranged in columns, progressive order.  The shield uses
 // 800 KHz (v2) pixels that expect GRB color data.
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(32, 8, PIN,
-                            NEO_MATRIX_BOTTOM    + NEO_MATRIX_RIGHT +
-                            NEO_MATRIX_COLUMNS + NEO_MATRIX_PROGRESSIVE,
+                            NEO_MATRIX_TOP     + NEO_MATRIX_LEFT +
+                            NEO_MATRIX_ROWS + NEO_MATRIX_ZIGZAG,
                             NEO_GRB            + NEO_KHZ800);
 //WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 WEB_SERVER server(HTTP_PORT);
@@ -161,6 +161,9 @@ void setup() {
   Serial.println("ready!");
 }
 
+int loop_x = 0;
+int loop_y = 0;
+
 void loop() {
   unsigned long now = millis();
   if (now - last_wifi_check_time > WIFI_TIMEOUT) {
@@ -175,12 +178,20 @@ void loop() {
   }
   ArduinoOTA.handle();
   // put your main code here, to run repeatedly:
-
   server.handleClient();
 
   matrix.fillScreen(0);
-  matrix.setCursor(0, 0);
-  matrix.print(F("Howdy"));
+  //  matrix.setCursor(0, 0);
+  //  matrix.print(F("(KN8)"));
+  matrix.drawPixel(loop_x, loop_y, matrix.Color(100, 155, 122));
+  loop_x += 1;
+  if (loop_x > matrix.width()-1) {
+    loop_x = 0;
+    loop_y += 1;
+  }
+  if (loop_y > matrix.height()-1) {
+    loop_y = 0;
+  }
   matrix.show();
   delay(100);
 }
@@ -193,8 +204,8 @@ void wifi_setup() {
   Serial.print("Connecting to ");
   Serial.println(WIFI_SSID);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 #ifdef STATIC_IP
   WiFi.config(ip, gateway, subnet);
 #endif
