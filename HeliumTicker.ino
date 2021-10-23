@@ -7,10 +7,12 @@
 #else
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
 #define WEB_SERVER ESP8266WebServer
 #define ESP_RESET ESP.reset()
 #endif
 
+HTTPClient http;
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
@@ -20,7 +22,24 @@
 #endif
 
 #include <WiFiUdp.h>
+#include <NTPClient.h>
 #include <ArduinoOTA.h>
+#include "WiFiSetup.h"
+
+#include <TimeLib.h>
+// NTP Servers:
+static const char ntpServerName[] = "us.pool.ntp.org";
+//static const char ntpServerName[] = "time.nist.gov";
+//static const char ntpServerName[] = "time-a.timefreq.bldrdoc.gov";
+//static const char ntpServerName[] = "time-b.timefreq.bldrdoc.gov";
+//static const char ntpServerName[] = "time-c.timefreq.bldrdoc.gov";
+
+const int timeZone = -6;     // Central
+//const int timeZone = -5;  // Eastern Standard Time (USA)
+//const int timeZone = -4;  // Eastern Daylight Time (USA)
+//const int timeZone = -8;  // Pacific Standard Time (USA)
+//const int timeZone = -7;  // Pacific Daylight Time (USA)
+unsigned int localPort = 8888;  // local port to listen for UDP packets
 
 #define PIN D5
 
@@ -34,6 +53,8 @@
 
 extern const char index_html[];
 extern const char main_js[];
+
+const String HOTSPOT_ADDRESS = "112bdGoWiDD9FTfTMHt2xgbAY2mn6dEULjGxwpZfJfhQRS9TYRGx";
 
 // QUICKFIX...See https://github.com/esp8266/Arduino/issues/263
 #define min(a,b) ((a)<(b)?(a):(b))
@@ -114,55 +135,26 @@ void setup() {
 
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
+  OTA_Setup();
+  
+  Serial.println("Starting UDP");
+  WiFiUDP.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(WiFiUDP.localPort());
+  Serial.println("waiting for sync");
+  setSyncProvider(getNtpTime);
+  setSyncInterval(300);
 
-  // Hostname defaults to esp8266-[ChipID]
-  ArduinoOTA.setHostname("heliumticker");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_FS
-      type = "filesystem";
-    }
-
-    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-  });
-  ArduinoOTA.begin();
+  Serial.println("getting data");
+  get_daily_average();
 
   Serial.println("ready!");
 }
 
 int loop_x = 0;
 int loop_y = 0;
+
+int cursor_x = 0;
 
 void loop() {
   unsigned long now = millis();
@@ -179,56 +171,59 @@ void loop() {
   ArduinoOTA.handle();
   // put your main code here, to run repeatedly:
   server.handleClient();
-
+  cursor_x++;
   matrix.fillScreen(0);
-  //  matrix.setCursor(0, 0);
-  //  matrix.print(F("(KN8)"));
-  matrix.drawPixel(loop_x, loop_y, matrix.Color(100, 155, 122));
-  loop_x += 1;
-  if (loop_x > matrix.width()-1) {
-    loop_x = 0;
-    loop_y += 1;
-  }
-  if (loop_y > matrix.height()-1) {
-    loop_y = 0;
-  }
+  matrix.setCursor(0, 0);
+  matrix.print(build_display_string(cursor_x));
   matrix.show();
-  delay(100);
+
+  if (cursor_x % 50 == 0) {
+    get_daily_average();
+  }
+  delay(1000);
 }
 
-/*
-   Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
-*/
-void wifi_setup() {
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WIFI_SSID);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-#ifdef STATIC_IP
-  WiFi.config(ip, gateway, subnet);
-#endif
-
-  unsigned long connect_start = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-
-    if (millis() - connect_start > WIFI_TIMEOUT) {
-      Serial.println();
-      Serial.print("Tried ");
-      Serial.print(WIFI_TIMEOUT);
-      Serial.print("ms. Resetting ESP now.");
-      ESP_RESET;
-    }
+String build_display_string(int disp_clock) {
+  String display_string = "  ";
+  if (display_daily_average) {
+    display_string = display_string + "Daily Average: " + daily_average;
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
+  
+  int pos = disp_clock % display_string.length();
+
+  if (pos > 0) {
+    display_string = display_string.substring(pos) + display_string.substring(0,pos - 1);
+  }
+
+  //display_string += "  ";
+  
+  Serial.println(display_string);
+  return display_string;
+  
+}
+
+void get_new_data() {
+  
+}
+
+void get_daily_average() {
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    WiFiClient client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+
+    http.begin(client,"https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + strftime(now(),sizeof(now()),"%Y-%m-%dT%H:%M:%S") + "&min_time=" + "");  //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+
+    if (httpCode > 0) { //Check the returning code
+
+      String payload = http.getString();   //Get the request response payload
+      Serial.println(payload);             //Print the response payload
+
+    }
+
+    http.end();   //Close connection
+  }
 }
 
 void srv_handle_not_found() {
@@ -243,7 +238,6 @@ void srv_handle_get_stat() {
   for (uint8_t i = 0; i < server.args(); i++) {
     if (server.argName(i) == "daily-average") {
       server.send_P(200, "text/html", bool_to_str(display_daily_average));
-      return;
     } else if (server.argName(i) == "total") {
       server.send_P(200, "text/html", bool_to_str(display_wallet_value));
     } else if (server.argName(i) == "daily-total") {
@@ -326,4 +320,142 @@ void srv_handle_set() {
     }
   }
   server.send(200, "text/plain", "OK");
+}
+
+/*
+   Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
+*/
+void wifi_setup() {
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(WIFI_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+#ifdef STATIC_IP
+  WiFi.config(ip, gateway, subnet);
+#endif
+
+  unsigned long connect_start = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+
+    if (millis() - connect_start > WIFI_TIMEOUT) {
+      Serial.println();
+      Serial.print("Tried ");
+      Serial.print(WIFI_TIMEOUT);
+      Serial.print("ms. Resetting ESP now.");
+      ESP_RESET;
+    }
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+}
+
+void OTA_Setup(){
+  
+  // Hostname defaults to esp8266-[ChipID]
+  ArduinoOTA.setHostname("heliumticker");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+}
+
+const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
+byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
+
+time_t getNtpTime()
+{
+  IPAddress ntpServerIP; // NTP server's ip address
+
+  while (WiFiUDP.parsePacket() > 0) ; // discard any previously received packets
+  Serial.println("Transmit NTP Request");
+  // get a random server from the pool
+  WiFi.hostByName(ntpServerName, ntpServerIP);
+  Serial.print(ntpServerName);
+  Serial.print(": ");
+  Serial.println(ntpServerIP);
+  sendNTPpacket(ntpServerIP);
+  uint32_t beginWait = millis();
+  while (millis() - beginWait < 1500) {
+    int size = WiFiUDP.parsePacket();
+    if (size >= NTP_PACKET_SIZE) {
+      Serial.println("Receive NTP Response");
+      WiFiUDP.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
+      unsigned long secsSince1900;
+      // convert four bytes starting at location 40 to a long integer
+      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
+      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
+      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
+      secsSince1900 |= (unsigned long)packetBuffer[43];
+      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
+    }
+  }
+  Serial.println("No NTP Response :-(");
+  return 0; // return 0 if unable to get the time
+}
+
+// send an NTP request to the time server at the given address
+void sendNTPpacket(IPAddress &address)
+{
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  // (see URL above for details on the packets)
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12] = 49;
+  packetBuffer[13] = 0x4E;
+  packetBuffer[14] = 49;
+  packetBuffer[15] = 52;
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  WiFiUDP.beginPacket(address, 123); //NTP requests are to port 123
+  WiFiUDP.write(packetBuffer, NTP_PACKET_SIZE);
+  WiFiUDP.endPacket();
 }
