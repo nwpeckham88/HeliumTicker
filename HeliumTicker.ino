@@ -22,25 +22,10 @@ HTTPClient http;
 #endif
 
 #include <WiFiUdp.h>
-#include <NTPClient.h>
 #include <ArduinoOTA.h>
 #include "WiFiSetup.h"
 
-#include <TimeLib.h>
-// NTP Servers:
-static const char ntpServerName[] = "us.pool.ntp.org";
-//static const char ntpServerName[] = "time.nist.gov";
-//static const char ntpServerName[] = "time-a.timefreq.bldrdoc.gov";
-//static const char ntpServerName[] = "time-b.timefreq.bldrdoc.gov";
-//static const char ntpServerName[] = "time-c.timefreq.bldrdoc.gov";
-
-const int timeZone = -6;     // Central
-//const int timeZone = -5;  // Eastern Standard Time (USA)
-//const int timeZone = -4;  // Eastern Daylight Time (USA)
-//const int timeZone = -8;  // Pacific Standard Time (USA)
-//const int timeZone = -7;  // Pacific Daylight Time (USA)
-unsigned int localPort = 8888;  // local port to listen for UDP packets
-
+#include <ezTime.h>
 #define PIN D5
 
 #define WIFI_SSID "CenturyLink5739"
@@ -110,6 +95,8 @@ bool display_witnesses = true;
 
 float daily_average = 0;
 
+Timezone Omaha;
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -119,7 +106,7 @@ void setup() {
   Serial.println("WS2812FX setup");
   matrix.begin();
   matrix.setTextWrap(false);
-  matrix.setBrightness(40);
+  matrix.setBrightness(10);
   matrix.setTextColor(matrix.Color(255, 0, 0)); // default color is red
 
   Serial.println("Wifi setup");
@@ -136,14 +123,19 @@ void setup() {
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
   OTA_Setup();
+
+  // Set NTP polling frequency (seconds)
+  setInterval(60);
+  setDebug(INFO);
+
+  waitForSync();
+
+  Serial.println("UTC: " + UTC.dateTime());
   
-  Serial.println("Starting UDP");
-  WiFiUDP.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(WiFiUDP.localPort());
-  Serial.println("waiting for sync");
-  setSyncProvider(getNtpTime);
-  setSyncInterval(300);
+  Omaha.setLocation("America/Chicago");
+  Serial.println("Omaha time: " + Omaha.dateTime());
+  
+  //timeClient.begin();
 
   Serial.println("getting data");
   get_daily_average();
@@ -157,6 +149,8 @@ int loop_y = 0;
 int cursor_x = 0;
 
 void loop() {
+  //timeClient.update();
+  //Serial.println(Omaha.dateTime(ISO8601));
   unsigned long now = millis();
   if (now - last_wifi_check_time > WIFI_TIMEOUT) {
     Serial.print("Checking WiFi... ");
@@ -181,6 +175,7 @@ void loop() {
     get_daily_average();
   }
   delay(1000);
+  events();
 }
 
 String build_display_string(int disp_clock) {
@@ -188,7 +183,6 @@ String build_display_string(int disp_clock) {
   if (display_daily_average) {
     display_string = display_string + "Daily Average: " + daily_average;
   }
-
   
   int pos = disp_clock % display_string.length();
 
@@ -198,7 +192,7 @@ String build_display_string(int disp_clock) {
 
   //display_string += "  ";
   
-  Serial.println(display_string);
+  //Serial.println(display_string);
   return display_string;
   
 }
@@ -209,18 +203,23 @@ void get_new_data() {
 
 void get_daily_average() {
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
-    WiFiClient client;
+    WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
-
-    http.begin(client,"https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + strftime(now(),sizeof(now()),"%Y-%m-%dT%H:%M:%S") + "&min_time=" + "");  //Specify request destination
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+    
+    client.setInsecure(); // this is the magical line that makes everything work
+    time_t day_ago = Omaha.now() - 86400;
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago,ISO8601);
+    Serial.println(query);
+    http.begin(client,query);  //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
-    if (httpCode > 0) { //Check the returning code
+    //if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
       Serial.println(payload);             //Print the response payload
 
-    }
+    //}
 
     http.end();   //Close connection
   }
@@ -369,6 +368,7 @@ void OTA_Setup(){
   // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
   // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
+
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -401,61 +401,4 @@ void OTA_Setup(){
     }
   });
   ArduinoOTA.begin();
-}
-
-const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
-byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
-
-time_t getNtpTime()
-{
-  IPAddress ntpServerIP; // NTP server's ip address
-
-  while (WiFiUDP.parsePacket() > 0) ; // discard any previously received packets
-  Serial.println("Transmit NTP Request");
-  // get a random server from the pool
-  WiFi.hostByName(ntpServerName, ntpServerIP);
-  Serial.print(ntpServerName);
-  Serial.print(": ");
-  Serial.println(ntpServerIP);
-  sendNTPpacket(ntpServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = WiFiUDP.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Serial.println("Receive NTP Response");
-      WiFiUDP.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
-    }
-  }
-  Serial.println("No NTP Response :-(");
-  return 0; // return 0 if unable to get the time
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12] = 49;
-  packetBuffer[13] = 0x4E;
-  packetBuffer[14] = 49;
-  packetBuffer[15] = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  WiFiUDP.beginPacket(address, 123); //NTP requests are to port 123
-  WiFiUDP.write(packetBuffer, NTP_PACKET_SIZE);
-  WiFiUDP.endPacket();
 }
