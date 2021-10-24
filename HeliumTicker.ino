@@ -26,6 +26,9 @@ HTTPClient http;
 #include "WiFiSetup.h"
 
 #include <ezTime.h>
+
+#include <ArduinoJson.h>
+
 #define PIN D5
 
 #define WIFI_SSID "CenturyLink5739"
@@ -125,8 +128,8 @@ void setup() {
   OTA_Setup();
 
   // Set NTP polling frequency (seconds)
-  setInterval(60);
-  setDebug(INFO);
+  setInterval(10);
+  //setDebug(INFO);
 
   waitForSync();
 
@@ -140,6 +143,8 @@ void setup() {
   Serial.println("getting data");
   get_daily_average();
 
+  setEvent( get_daily_average, updateInterval() );
+  
   Serial.println("ready!");
 }
 
@@ -147,6 +152,10 @@ int loop_x = 0;
 int loop_y = 0;
 
 int cursor_x = 0;
+
+time_t updateInterval(){
+  return now() + 60*(60000); // x*(60000) = x minutes between updates
+}
 
 void loop() {
   //timeClient.update();
@@ -201,6 +210,7 @@ void get_new_data() {
   
 }
 
+
 void get_daily_average() {
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
@@ -214,15 +224,28 @@ void get_daily_average() {
     http.begin(client,query);  //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
-    //if (httpCode > 0) { //Check the returning code
+    if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
-      Serial.println(payload);             //Print the response payload
+      
+      StaticJsonDocument<200> da_filter;
+      da_filter["data"]["total"] = true;
+      
+      StaticJsonDocument<400> doc;
+      deserializeJson(doc, payload, DeserializationOption::Filter(da_filter));
 
-    //}
+      // Print the result
+      serializeJsonPretty(doc, Serial);
+      daily_average = doc["data"]["total"];
+      Serial.print("Daily average updated: ");
+      Serial.println(daily_average);             //Print the response payload
+
+    }
 
     http.end();   //Close connection
   }
+  // Set up event for next time
+  setEvent( get_daily_average, updateInterval() );
 }
 
 void srv_handle_not_found() {
