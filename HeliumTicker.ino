@@ -38,6 +38,8 @@ HTTPClient http;
 #define DEFAULT_BRIGHTNESS 128
 #define DEFAULT_SPEED 1000
 #define DEFAULT_MODE FX_MODE_STATIC
+#define STEPS_PER_DISPLAY_UPDATE 1000
+
 
 extern const char index_html[];
 extern const char main_js[];
@@ -51,7 +53,7 @@ const String HOTSPOT_ADDRESS = "112bdGoWiDD9FTfTMHt2xgbAY2mn6dEULjGxwpZfJfhQRS9T
 
 #define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
 
-#define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
+
 #define HTTP_PORT 80
 
 // MATRIX DECLARATION:
@@ -87,8 +89,16 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(32, 8, PIN,
 //WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 WEB_SERVER server(HTTP_PORT);
 
+#define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
+#define DISPLAY_UPDATE_INTERVAL 100
+int scroll_speed = 700;
+int scroll_pos = 0;
+
 unsigned long auto_last_change = 0;
 unsigned long last_wifi_check_time = 0;
+unsigned long last_display_update_time = 0;
+unsigned long last_pos_update_time = 0;
+
 
 bool display_daily_average = true;
 bool display_wallet_value = true;
@@ -129,7 +139,7 @@ void setup() {
   OTA_Setup();
 
   // Set NTP polling frequency (seconds)
-  setInterval(10);
+  setInterval(60*60);
   //setDebug(INFO);
 
   waitForSync();
@@ -143,8 +153,11 @@ void setup() {
   //timeClient.begin();
 
   //Serial.println("getting data");
-  
+
+  check_wifi();
   get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
+  scroll_text();
+  update_display();
   //setEvent( get_daily_total,updateInterval() );
 
   Serial.println("ready!");
@@ -153,12 +166,12 @@ void setup() {
 time_t updateInterval() {
 
   time_t event_time = Omaha.now() + (2 * (60)); // x*(60) = x minutes between updates
-  Serial.println(event_time);
-  Serial.println(Omaha.dateTime(event_time));
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
   return event_time;
 }
 
-int display_clock = 0;
+
 
 /*
    Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
@@ -195,58 +208,76 @@ void wifi_setup() {
   Serial.println();
 }
 
+String display_string;
+
 void loop() {
   //timeClient.update();
   //Serial.println(Omaha.dateTime(ISO8601));
   events();
-  unsigned long now = millis();
-  if (now - last_wifi_check_time > WIFI_TIMEOUT) {
-    Serial.print("Checking WiFi... ");
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi connection lost. Reconnecting...");
-      wifi_setup();
-    } else {
-      Serial.println("OK");
-    }
-    last_wifi_check_time = now;
-  }
   ArduinoOTA.handle();
   // put your main code here, to run repeatedly:
   server.handleClient();
-  display_clock++;
+
+  unsigned long now_ms = millis();
+  if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
+    update_display();
+    last_display_update_time = now_ms;
+  }
+
+  if (now_ms - last_pos_update_time > scroll_speed) {
+    scroll_text();
+    last_pos_update_time = now_ms;
+  }
+  //  if (display_clock % 600 == 0) {
+  //    get_daily_total();
+  //  }
+  //delay(1000);
+}
+
+void check_wifi() {
+  Serial.print("Checking WiFi... ");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost. Reconnecting...");
+    wifi_setup();
+  } else {
+    Serial.println("OK");
+  }
+  setEvent(check_wifi,Omaha.now() + WIFI_TIMEOUT);
+}
+
+void update_display() {
+  //Serial.println("Updating display");
   matrix.fillScreen(0);
   matrix.setCursor(0, 0);
-  matrix.print(build_display_string(display_clock));
+  matrix.print(display_string);
   matrix.show();
-//  if (display_clock % 600 == 0) {
-//    get_daily_total();
-//  }
-  delay(1000);
+  //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
+}
+
+void scroll_text() {
+  scroll_pos++;
+  display_string = build_display_string(scroll_pos);
+  //setEvent(scroll_text,Omaha.now() + scroll_speed);
 }
 
 String build_display_string(int disp_clock) {
-  String display_string = "  ";
+  String temp_display_string = "  ";
   if (display_daily_total) {
-    display_string = display_string + "24Hr Total: " + daily_total;
+    temp_display_string = temp_display_string + "24Hr Total: " + daily_total;
   }
 
-  int pos = disp_clock % display_string.length();
+  int pos = disp_clock % temp_display_string.length();
 
   if (pos > 0) {
-    display_string = display_string.substring(pos) + display_string.substring(0, pos - 1);
+    temp_display_string = temp_display_string.substring(pos) + temp_display_string.substring(0, pos - 1);
   }
 
   //display_string += "  ";
 
   //Serial.println(display_string);
-  return display_string;
+  return temp_display_string;
 
 }
-
-void get_new_data() {
-
-}
-
 
 void get_daily_total() {
   Serial.println("Fetching new daily total");
@@ -363,18 +394,16 @@ void srv_handle_set() {
       uint32_t tmp = (uint32_t) strtol(server.arg(i).c_str(), NULL, 10);
       if (tmp >= 0x000000 && tmp <= 0xFFFFFF) {
         //matrix.setColor(tmp);
-        matrix.setTextColor(tmp);
+        uint32_t rgb_color = matrix.ColorHSV(tmp);
+        matrix.setTextColor(rgb_color);
       }
     }
 
     if (server.argName(i) == "b") {
       if (server.arg(i)[0] == '-') {
-        matrix.setBrightness(matrix.getBrightness() * 0.8);
-      } else if (server.arg(i)[0] == '+') {
-        matrix.setBrightness(min(max(matrix.getBrightness(), 5) * 1.2, 255));
-      } else { // set brightness directly
-        uint8_t tmp = (uint8_t) strtol(server.arg(i).c_str(), NULL, 10);
-        matrix.setBrightness(tmp);
+        matrix.setBrightness(max(matrix.getBrightness()-1,0));
+      } else {
+        matrix.setBrightness(min(matrix.getBrightness()+1,60));
       }
       Serial.print("brightness is "); Serial.println(matrix.getBrightness());
     }

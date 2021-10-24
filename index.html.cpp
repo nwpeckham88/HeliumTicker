@@ -70,6 +70,7 @@ char index_html[] PROGMEM = R"=====(
     
     function onColor(event, color) {
       event.preventDefault();
+      console.log(color);
       var match = color.match(/rgb\(([0-9]*),([0-9]*),([0-9]*)\)/);
       if(match) {
         var colorValue = Number(match[1]) * 65536 + Number(match[2]) * 256 + Number(match[3]);
