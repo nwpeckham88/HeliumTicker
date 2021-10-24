@@ -142,27 +142,27 @@ void setup() {
   //timeClient.begin();
 
   Serial.println("getting data");
-  get_daily_total();
+  //get_daily_total();
 
   setEvent( get_daily_total, updateInterval() );
   
   Serial.println("ready!");
 }
 
-int loop_x = 0;
-int loop_y = 0;
-
-int cursor_x = 0;
-
 time_t updateInterval(){
   //Serial.println(now());
   //Serial.println(now() + 5*60000);
-  return now() + 5*(60000); // x*(60000) = x minutes between updates
+  time_t event_time = Omaha.now() + (1*(60)); // x*(60) = x minutes between updates
+  Serial.println(Omaha.dateTime(event_time,LOCAL_TIME,ISO8601));
+  return event_time;
 }
+
+int display_clock = 0;
 
 void loop() {
   //timeClient.update();
   //Serial.println(Omaha.dateTime(ISO8601));
+  events();
   unsigned long now = millis();
   if (now - last_wifi_check_time > WIFI_TIMEOUT) {
     Serial.print("Checking WiFi... ");
@@ -177,13 +177,12 @@ void loop() {
   ArduinoOTA.handle();
   // put your main code here, to run repeatedly:
   server.handleClient();
-  cursor_x++;
+  display_clock++;
   matrix.fillScreen(0);
   matrix.setCursor(0, 0);
-  matrix.print(build_display_string(cursor_x));
+  matrix.print(build_display_string(display_clock));
   matrix.show();
   delay(1000);
-  events();
 }
 
 String build_display_string(int disp_clock) {
