@@ -135,29 +135,65 @@ void setup() {
   waitForSync();
 
   Serial.println("UTC: " + UTC.dateTime());
-  
+
   Omaha.setLocation("America/Chicago");
+  Omaha.setDefault();
   Serial.println("Omaha time: " + Omaha.dateTime());
-  
+
   //timeClient.begin();
 
-  Serial.println("getting data");
-  //get_daily_total();
-
-  setEvent( get_daily_total, updateInterval() );
+  //Serial.println("getting data");
   
+  get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
+  //setEvent( get_daily_total,updateInterval() );
+
   Serial.println("ready!");
 }
 
-time_t updateInterval(){
-  //Serial.println(now());
-  //Serial.println(now() + 5*60000);
-  time_t event_time = Omaha.now() + (1*(60)); // x*(60) = x minutes between updates
-  Serial.println(Omaha.dateTime(event_time,LOCAL_TIME,ISO8601));
+time_t updateInterval() {
+
+  time_t event_time = Omaha.now() + (2 * (60)); // x*(60) = x minutes between updates
+  Serial.println(event_time);
+  Serial.println(Omaha.dateTime(event_time));
   return event_time;
 }
 
 int display_clock = 0;
+
+/*
+   Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
+*/
+void wifi_setup() {
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(WIFI_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+#ifdef STATIC_IP
+  WiFi.config(ip, gateway, subnet);
+#endif
+
+  unsigned long connect_start = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+
+    if (millis() - connect_start > WIFI_TIMEOUT) {
+      Serial.println();
+      Serial.print("Tried ");
+      Serial.print(WIFI_TIMEOUT);
+      Serial.print("ms. Resetting ESP now.");
+      ESP_RESET;
+    }
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+}
 
 void loop() {
   //timeClient.update();
@@ -182,6 +218,9 @@ void loop() {
   matrix.setCursor(0, 0);
   matrix.print(build_display_string(display_clock));
   matrix.show();
+//  if (display_clock % 600 == 0) {
+//    get_daily_total();
+//  }
   delay(1000);
 }
 
@@ -190,22 +229,22 @@ String build_display_string(int disp_clock) {
   if (display_daily_total) {
     display_string = display_string + "24Hr Total: " + daily_total;
   }
-  
+
   int pos = disp_clock % display_string.length();
 
   if (pos > 0) {
-    display_string = display_string.substring(pos) + display_string.substring(0,pos - 1);
+    display_string = display_string.substring(pos) + display_string.substring(0, pos - 1);
   }
 
   //display_string += "  ";
-  
+
   //Serial.println(display_string);
   return display_string;
-  
+
 }
 
 void get_new_data() {
-  
+
 }
 
 
@@ -215,26 +254,26 @@ void get_daily_total() {
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
-    
+
     client.setInsecure(); // this is the magical line that makes everything work
     time_t day_ago = Omaha.now() - 86400;
-    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago,ISO8601);
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago, ISO8601);
     Serial.println(query);
-    http.begin(client,query);  //Specify request destination
+    http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
-      
+
       StaticJsonDocument<200> da_filter;
       da_filter["data"]["total"] = true;
-      
+
       StaticJsonDocument<400> doc;
       deserializeJson(doc, payload, DeserializationOption::Filter(da_filter));
 
       // Print the result
-      serializeJsonPretty(doc, Serial);
+      //serializeJsonPretty(doc, Serial);
       daily_total = doc["data"]["total"];
       Serial.print("Daily total updated: ");
       Serial.println(daily_total);             //Print the response payload
@@ -343,43 +382,8 @@ void srv_handle_set() {
   server.send(200, "text/plain", "OK");
 }
 
-/*
-   Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
-*/
-void wifi_setup() {
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WIFI_SSID);
+void OTA_Setup() {
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-#ifdef STATIC_IP
-  WiFi.config(ip, gateway, subnet);
-#endif
-
-  unsigned long connect_start = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-
-    if (millis() - connect_start > WIFI_TIMEOUT) {
-      Serial.println();
-      Serial.print("Tried ");
-      Serial.print(WIFI_TIMEOUT);
-      Serial.print("ms. Resetting ESP now.");
-      ESP_RESET;
-    }
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
-}
-
-void OTA_Setup(){
-  
   // Hostname defaults to esp8266-[ChipID]
   ArduinoOTA.setHostname("heliumticker");
 
