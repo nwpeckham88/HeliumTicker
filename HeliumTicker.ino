@@ -97,6 +97,7 @@ bool display_thirty_day_total = true;
 bool display_witnesses = true;
 
 float daily_average = 0;
+float daily_total = 0;
 
 Timezone Omaha;
 
@@ -141,9 +142,9 @@ void setup() {
   //timeClient.begin();
 
   Serial.println("getting data");
-  get_daily_average();
+  get_daily_total();
 
-  setEvent( get_daily_average, updateInterval() );
+  setEvent( get_daily_total, updateInterval() );
   
   Serial.println("ready!");
 }
@@ -154,7 +155,9 @@ int loop_y = 0;
 int cursor_x = 0;
 
 time_t updateInterval(){
-  return now() + 60*(60000); // x*(60000) = x minutes between updates
+  //Serial.println(now());
+  //Serial.println(now() + 5*60000);
+  return now() + 5*(60000); // x*(60000) = x minutes between updates
 }
 
 void loop() {
@@ -179,18 +182,14 @@ void loop() {
   matrix.setCursor(0, 0);
   matrix.print(build_display_string(cursor_x));
   matrix.show();
-
-  if (cursor_x % 50 == 0) {
-    get_daily_average();
-  }
   delay(1000);
   events();
 }
 
 String build_display_string(int disp_clock) {
   String display_string = "  ";
-  if (display_daily_average) {
-    display_string = display_string + "Daily Average: " + daily_average;
+  if (display_daily_total) {
+    display_string = display_string + "24Hr Total: " + daily_total;
   }
   
   int pos = disp_clock % display_string.length();
@@ -211,7 +210,8 @@ void get_new_data() {
 }
 
 
-void get_daily_average() {
+void get_daily_total() {
+  Serial.println("Fetching new daily total");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -236,16 +236,16 @@ void get_daily_average() {
 
       // Print the result
       serializeJsonPretty(doc, Serial);
-      daily_average = doc["data"]["total"];
-      Serial.print("Daily average updated: ");
-      Serial.println(daily_average);             //Print the response payload
+      daily_total = doc["data"]["total"];
+      Serial.print("Daily total updated: ");
+      Serial.println(daily_total);             //Print the response payload
 
     }
 
     http.end();   //Close connection
   }
   // Set up event for next time
-  setEvent( get_daily_average, updateInterval() );
+  setEvent( get_daily_total, updateInterval() );
 }
 
 void srv_handle_not_found() {
