@@ -317,6 +317,44 @@ void get_daily_total() {
   setEvent( get_daily_total, updateInterval() );
 }
 
+void get_wallet_value() {
+  Serial.println("Fetching new wallet value");
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    WiFiClientSecure client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+
+    client.setInsecure(); // this is the magical line that makes everything work
+    time_t day_ago = Omaha.now() - 86400;
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago, ISO8601);
+    Serial.println(query);
+    http.begin(client, query); //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+
+    if (httpCode > 0) { //Check the returning code
+
+      String payload = http.getString();   //Get the request response payload
+
+      StaticJsonDocument<200> filter;
+      filter["data"]["total"] = true;
+
+      StaticJsonDocument<400> doc;
+      deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+
+      // Print the result
+      //serializeJsonPretty(doc, Serial);
+      daily_total = doc["data"]["total"];
+      Serial.print("Daily total updated: ");
+      Serial.println(daily_total);             //Print the response payload
+
+    }
+
+    http.end();   //Close connection
+  }
+  // Set up event for next time
+  setEvent( get_daily_total, updateInterval() );
+}
+
 void srv_handle_not_found() {
   server.send(404, "text/plain", "File Not Found");
 }
