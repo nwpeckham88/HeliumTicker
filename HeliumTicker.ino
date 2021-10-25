@@ -45,6 +45,7 @@ extern const char index_html[];
 extern const char main_js[];
 
 const String HOTSPOT_ADDRESS = "112bdGoWiDD9FTfTMHt2xgbAY2mn6dEULjGxwpZfJfhQRS9TYRGx";
+const String ACCOUNT_ADDRESS = "14so6GT2PBAkttTL1askWJ2NfdYQycj9JhLTmVoPDSj7nRvTyAD";
 
 // QUICKFIX...See https://github.com/esp8266/Arduino/issues/263
 #define min(a,b) ((a)<(b)?(a):(b))
@@ -91,7 +92,7 @@ WEB_SERVER server(HTTP_PORT);
 
 #define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
 #define DISPLAY_UPDATE_INTERVAL 100
-int scroll_speed = 700;
+int scroll_speed = 500;
 int scroll_pos = 0;
 
 unsigned long auto_last_change = 0;
@@ -108,6 +109,9 @@ bool display_witnesses = true;
 
 float daily_average = 0;
 float daily_total = 0;
+float wallet_value = 0;
+float thirty_day_total = 0;
+float witnesses = 0;
 
 Timezone Omaha;
 
@@ -152,10 +156,11 @@ void setup() {
 
   //timeClient.begin();
 
-  //Serial.println("getting data");
+  Serial.println("getting data");
 
   check_wifi();
   get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
+  get_wallet_value();
   scroll_text();
   update_display();
   //setEvent( get_daily_total,updateInterval() );
@@ -165,7 +170,15 @@ void setup() {
 
 time_t updateInterval() {
 
-  time_t event_time = Omaha.now() + (2 * (60)); // x*(60) = x minutes between updates
+  time_t event_time = Omaha.now() + (10 * (60)); // x*(60) = x minutes between updates
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
+  return event_time;
+}
+
+time_t retryUpdateInterval() {
+
+  time_t event_time = Omaha.now() + 20; // Retry in 20 seconds
   //Serial.println(event_time);
   //Serial.println(Omaha.dateTime(event_time));
   return event_time;
@@ -265,6 +278,9 @@ String build_display_string(int disp_clock) {
   if (display_daily_total) {
     temp_display_string = temp_display_string + "24Hr Total: " + daily_total;
   }
+  if (display_wallet_value) {
+    temp_display_string = temp_display_string + " Wallet Value: " + wallet_value;
+  }
 
   int pos = disp_clock % temp_display_string.length();
 
@@ -308,13 +324,16 @@ void get_daily_total() {
       daily_total = doc["data"]["total"];
       Serial.print("Daily total updated: ");
       Serial.println(daily_total);             //Print the response payload
-
+      setEvent( get_daily_total, updateInterval() );
+      
+    } else {
+      Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( get_daily_total, retryUpdateInterval() );
+      
     }
 
     http.end();   //Close connection
   }
-  // Set up event for next time
-  setEvent( get_daily_total, updateInterval() );
 }
 
 void get_wallet_value() {
@@ -325,8 +344,7 @@ void get_wallet_value() {
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
 
     client.setInsecure(); // this is the magical line that makes everything work
-    time_t day_ago = Omaha.now() - 86400;
-    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago, ISO8601);
+    String query = "https://api.helium.io/v1/accounts/" + ACCOUNT_ADDRESS;
     Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
@@ -336,23 +354,27 @@ void get_wallet_value() {
       String payload = http.getString();   //Get the request response payload
 
       StaticJsonDocument<200> filter;
-      filter["data"]["total"] = true;
+      filter["data"]["balance"] = true;
 
       StaticJsonDocument<400> doc;
       deserializeJson(doc, payload, DeserializationOption::Filter(filter));
 
       // Print the result
       //serializeJsonPretty(doc, Serial);
-      daily_total = doc["data"]["total"];
-      Serial.print("Daily total updated: ");
-      Serial.println(daily_total);             //Print the response payload
-
+      wallet_value = doc["data"]["balance"];
+      wallet_value /= 100000000;
+      Serial.print("Wallet Value: ");
+      Serial.println(wallet_value);             //Print the response payload
+      setEvent( get_wallet_value, updateInterval() );
+      
+    } else {
+      Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( get_wallet_value, retryUpdateInterval() );
+      
     }
 
     http.end();   //Close connection
   }
-  // Set up event for next time
-  setEvent( get_daily_total, updateInterval() );
 }
 
 void srv_handle_not_found() {
