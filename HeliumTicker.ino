@@ -34,12 +34,51 @@ HTTPClient http;
 #define WIFI_SSID "CenturyLink5739"
 #define WIFI_PASSWORD "jjugy4z5jdnw76"
 
-#define DEFAULT_COLOR 0xFF5900
+#define DEFAULT_COLOR 0xAA59AA
 #define DEFAULT_BRIGHTNESS 128
 #define DEFAULT_SPEED 1000
 #define DEFAULT_MODE FX_MODE_STATIC
 #define STEPS_PER_DISPLAY_UPDATE 1000
 
+
+// This could also be defined as matrix->color(255,0,0) but those defines
+// are meant to work for adafruit_gfx backends that are lacking color()
+#define LED_BLACK    0
+
+#define LED_RED_VERYLOW   (3 <<  11)
+#define LED_RED_LOW     (7 <<  11)
+#define LED_RED_MEDIUM    (15 << 11)
+#define LED_RED_HIGH    (31 << 11)
+
+#define LED_GREEN_VERYLOW (1 <<  5)
+#define LED_GREEN_LOW     (15 << 5)
+#define LED_GREEN_MEDIUM  (31 << 5)
+#define LED_GREEN_HIGH    (63 << 5)
+
+#define LED_BLUE_VERYLOW  3
+#define LED_BLUE_LOW    7
+#define LED_BLUE_MEDIUM   15
+#define LED_BLUE_HIGH     31
+
+#define LED_ORANGE_VERYLOW  (LED_RED_VERYLOW + LED_GREEN_VERYLOW)
+#define LED_ORANGE_LOW    (LED_RED_LOW     + LED_GREEN_LOW)
+#define LED_ORANGE_MEDIUM (LED_RED_MEDIUM  + LED_GREEN_MEDIUM)
+#define LED_ORANGE_HIGH   (LED_RED_HIGH    + LED_GREEN_HIGH)
+
+#define LED_PURPLE_VERYLOW  (LED_RED_VERYLOW + LED_BLUE_VERYLOW)
+#define LED_PURPLE_LOW    (LED_RED_LOW     + LED_BLUE_LOW)
+#define LED_PURPLE_MEDIUM (LED_RED_MEDIUM  + LED_BLUE_MEDIUM)
+#define LED_PURPLE_HIGH   (LED_RED_HIGH    + LED_BLUE_HIGH)
+
+#define LED_CYAN_VERYLOW  (LED_GREEN_VERYLOW + LED_BLUE_VERYLOW)
+#define LED_CYAN_LOW    (LED_GREEN_LOW     + LED_BLUE_LOW)
+#define LED_CYAN_MEDIUM   (LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
+#define LED_CYAN_HIGH   (LED_GREEN_HIGH    + LED_BLUE_HIGH)
+
+#define LED_WHITE_VERYLOW (LED_RED_VERYLOW + LED_GREEN_VERYLOW + LED_BLUE_VERYLOW)
+#define LED_WHITE_LOW   (LED_RED_LOW     + LED_GREEN_LOW     + LED_BLUE_LOW)
+#define LED_WHITE_MEDIUM  (LED_RED_MEDIUM  + LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
+#define LED_WHITE_HIGH    (LED_RED_HIGH    + LED_GREEN_HIGH    + LED_BLUE_HIGH)
 
 extern const char index_html[];
 extern const char main_js[];
@@ -54,6 +93,8 @@ const String ACCOUNT_ADDRESS = "14so6GT2PBAkttTL1askWJ2NfdYQycj9JhLTmVoPDSj7nRvT
 
 #define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
 
+#define MATRIX_WIDTH 32
+#define MATRIX_HEIGHT 8
 
 #define HTTP_PORT 80
 
@@ -83,7 +124,7 @@ const String ACCOUNT_ADDRESS = "14so6GT2PBAkttTL1askWJ2NfdYQycj9JhLTmVoPDSj7nRvT
 // Arduino.  When held that way, the first pixel is at the top right, and
 // lines are arranged in columns, progressive order.  The shield uses
 // 800 KHz (v2) pixels that expect GRB color data.
-Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(32, 8, PIN,
+Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, PIN,
                             NEO_MATRIX_TOP     + NEO_MATRIX_LEFT +
                             NEO_MATRIX_ROWS + NEO_MATRIX_ZIGZAG,
                             NEO_GRB            + NEO_KHZ800);
@@ -106,12 +147,19 @@ bool display_wallet_value = true;
 bool display_daily_total = true;
 bool display_thirty_day_total = true;
 bool display_witnesses = true;
+bool display_oracle_price = true;
 
 float daily_average = 0;
 float daily_total = 0;
 float wallet_value = 0;
+float previous_wallet_value = 0;
 float thirty_day_total = 0;
 float witnesses = 0;
+float oracle_price = 0;
+
+int animationCounter = 0;
+boolean happyDanceAnimation = false;
+boolean initializedWalletValue = false;
 
 Timezone Omaha;
 
@@ -125,7 +173,7 @@ void setup() {
   matrix.begin();
   matrix.setTextWrap(false);
   matrix.setBrightness(10);
-  matrix.setTextColor(matrix.Color(255, 0, 0)); // default color is red
+  matrix.setTextColor(matrix.Color(200, 200, 255));
 
   Serial.println("Wifi setup");
   wifi_setup();
@@ -143,7 +191,7 @@ void setup() {
   OTA_Setup();
 
   // Set NTP polling frequency (seconds)
-  setInterval(60*60);
+  setInterval(60 * 60);
   //setDebug(INFO);
 
   waitForSync();
@@ -161,6 +209,8 @@ void setup() {
   check_wifi();
   get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
   get_wallet_value();
+  get_thirty_day_total();
+  get_oracle_price();
   scroll_text();
   update_display();
   //setEvent( get_daily_total,updateInterval() );
@@ -232,20 +282,52 @@ void loop() {
   server.handleClient();
 
   unsigned long now_ms = millis();
-  if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
-    update_display();
-    last_display_update_time = now_ms;
-  }
-
-  if (now_ms - last_pos_update_time > scroll_speed) {
-    scroll_text();
-    last_pos_update_time = now_ms;
+  if (happyDanceAnimation) {
+    //TODO: Fancy animation because we made money
+    deposit_animation();
+    animationCounter++;
+  } else {
+    if (previous_wallet_value < wallet_value) {
+      if (initializedWalletValue) {
+        Serial.println("Starting Happy Dance animation");
+        Serial.println(previous_wallet_value);
+        Serial.println(wallet_value);
+        previous_wallet_value = wallet_value;
+        happyDanceAnimation = true;
+      }
+    } else {
+      if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
+        update_display();
+        last_display_update_time = now_ms;
+      }
+      if (now_ms - last_pos_update_time > scroll_speed) {
+        scroll_text();
+        last_pos_update_time = now_ms;
+      }
+    }
   }
   //  if (display_clock % 600 == 0) {
   //    get_daily_total();
   //  }
   //delay(1000);
 }
+
+void deposit_animation() {
+  //Serial.println("Updating display");
+  int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
+  matrix.clear();
+  matrix.drawRect(0, 0, MATRIX_WIDTH, MATRIX_HEIGHT, LED_BLUE_HIGH);
+  matrix.drawRect(1, 1, MATRIX_WIDTH - 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
+  matrix.fillRect(2, 2, MATRIX_WIDTH - 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
+  matrix.fillRect(3, 3, MATRIX_WIDTH - 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
+  matrix.show();
+  if (animationCounter == 50) {
+    happyDanceAnimation = false;
+    animationCounter = 0;
+  }
+}
+//setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
+
 
 void check_wifi() {
   Serial.print("Checking WiFi... ");
@@ -255,7 +337,7 @@ void check_wifi() {
   } else {
     Serial.println("OK");
   }
-  setEvent(check_wifi,Omaha.now() + WIFI_TIMEOUT);
+  setEvent(check_wifi, Omaha.now() + WIFI_TIMEOUT);
 }
 
 void update_display() {
@@ -276,12 +358,17 @@ void scroll_text() {
 String build_display_string(int disp_clock) {
   String temp_display_string = "  ";
   if (display_daily_total) {
-    temp_display_string = temp_display_string + "24Hr Total: " + daily_total;
+    temp_display_string = temp_display_string + "24Hrs: " + daily_total;
   }
   if (display_wallet_value) {
-    temp_display_string = temp_display_string + " Wallet Value: " + wallet_value;
+    temp_display_string = temp_display_string + " Wallet: " + wallet_value;
   }
-
+  if (display_thirty_day_total) {
+    temp_display_string = temp_display_string + " 30 Days: " + thirty_day_total;
+  }
+  if (display_oracle_price) {
+    temp_display_string = temp_display_string + " HNT Value: $" + oracle_price;
+  }
   int pos = disp_clock % temp_display_string.length();
 
   if (pos > 0) {
@@ -325,11 +412,11 @@ void get_daily_total() {
       Serial.print("Daily total updated: ");
       Serial.println(daily_total);             //Print the response payload
       setEvent( get_daily_total, updateInterval() );
-      
+
     } else {
       Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_daily_total, retryUpdateInterval() );
-      
+
     }
 
     http.end();   //Close connection
@@ -361,16 +448,107 @@ void get_wallet_value() {
 
       // Print the result
       //serializeJsonPretty(doc, Serial);
+      if (initializedWalletValue){
+        previous_wallet_value = wallet_value;
+      }
       wallet_value = doc["data"]["balance"];
       wallet_value /= 100000000;
+      if (!initializedWalletValue){
+        previous_wallet_value = wallet_value;
+      }
+
+      initializedWalletValue = true;
+
       Serial.print("Wallet Value: ");
       Serial.println(wallet_value);             //Print the response payload
       setEvent( get_wallet_value, updateInterval() );
-      
+
     } else {
       Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_wallet_value, retryUpdateInterval() );
-      
+
+    }
+
+    http.end();   //Close connection
+  }
+}
+
+void get_thirty_day_total() {
+  Serial.println("Fetching new thiry day total");
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    WiFiClientSecure client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+
+    client.setInsecure(); // this is the magical line that makes everything work
+    time_t month_ago = Omaha.now() - 86400 * 30;
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(month_ago, ISO8601);
+    Serial.println(query);
+    http.begin(client, query); //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+
+    if (httpCode > 0) { //Check the returning code
+
+      String payload = http.getString();   //Get the request response payload
+
+      StaticJsonDocument<200> filter;
+      filter["data"]["total"] = true;
+
+      StaticJsonDocument<400> doc;
+      deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+
+      // Print the result
+      //serializeJsonPretty(doc, Serial);
+      thirty_day_total = doc["data"]["total"];
+      Serial.print("30 Day Total: ");
+      Serial.println(thirty_day_total);             //Print the response payload
+      setEvent( get_thirty_day_total, updateInterval() );
+
+    } else {
+      Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( get_thirty_day_total, retryUpdateInterval() );
+
+    }
+
+    http.end();   //Close connection
+  }
+}
+
+void get_oracle_price() {
+  Serial.println("Fetching oracle price");
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    WiFiClientSecure client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+
+    client.setInsecure(); // this is the magical line that makes everything work
+    String query = "https://api.helium.io/v1/oracle/prices/current";
+    Serial.println(query);
+    http.begin(client, query); //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+
+    if (httpCode > 0) { //Check the returning code
+
+      String payload = http.getString();   //Get the request response payload
+
+      StaticJsonDocument<200> filter;
+      filter["data"]["price"] = true;
+
+      StaticJsonDocument<400> doc;
+      deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+
+      // Print the result
+      //serializeJsonPretty(doc, Serial);
+      oracle_price = doc["data"]["price"];
+      oracle_price /= 100000000;
+      Serial.print("Oracle Price: ");
+      Serial.println(oracle_price);             //Print the response payload
+      setEvent( get_oracle_price, updateInterval() );
+
+    } else {
+      Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( get_oracle_price, retryUpdateInterval() );
+
     }
 
     http.end();   //Close connection
@@ -461,9 +639,9 @@ void srv_handle_set() {
 
     if (server.argName(i) == "b") {
       if (server.arg(i)[0] == '-') {
-        matrix.setBrightness(max(matrix.getBrightness()-1,0));
+        matrix.setBrightness(max(matrix.getBrightness() - 1, 0));
       } else {
-        matrix.setBrightness(min(matrix.getBrightness()+1,60));
+        matrix.setBrightness(min(matrix.getBrightness() + 1, 60));
       }
       Serial.print("brightness is "); Serial.println(matrix.getBrightness());
     }
