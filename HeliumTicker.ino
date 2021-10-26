@@ -1,40 +1,38 @@
 
 #ifdef ARDUINO_ARCH_ESP32
-  #include <WiFi.h>
-  #include <WebServer.h>
-  #define WEB_SERVER WebServer
-  #define ESP_RESET ESP.restart()
+#include <WiFi.h>
+#include <WebServer.h>
+#define WEB_SERVER WebServer
+#define ESP_RESET ESP.restart()
 #else
-  #include <ESP8266WiFi.h>
-  #include <ESP8266WebServer.h>
-  #include <ESP8266HTTPClient.h>
-  #define WEB_SERVER ESP8266WebServer
-  #define ESP_RESET ESP.reset()
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
+#define WEB_SERVER ESP8266WebServer
+#define ESP_RESET ESP.reset()
 #endif
 
-#ifndef PSTR
-  #define PSTR // Make Arduino Due happy
-#endif
+HTTPClient http;
 
-// GFX Related libraries
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
-#include "helium_animation.h"
+#ifndef PSTR
+#define PSTR // Make Arduino Due happy
+#endif
 
-// WiFi and Net libraries
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "WiFiSetup.h"
-#include <ArduinoJson.h>
-#include "ota.h"
 
-#include "sensitive.h"
-
-// Time, event scheduling, and NTP library
 #include <ezTime.h>
 
+#include <ArduinoJson.h>
+
 #define PIN D5
+
+#define WIFI_SSID "CenturyLink5739"
+#define WIFI_PASSWORD "jjugy4z5jdnw76"
 
 #define DEFAULT_COLOR 0xAA59AA
 #define DEFAULT_BRIGHTNESS 128
@@ -42,46 +40,108 @@
 #define DEFAULT_MODE FX_MODE_STATIC
 #define STEPS_PER_DISPLAY_UPDATE 1000
 
+
+// This could also be defined as matrix->color(255,0,0) but those defines
+// are meant to work for adafruit_gfx backends that are lacking color()
+#define LED_BLACK    0
+
+#define LED_RED_VERYLOW   (3 <<  11)
+#define LED_RED_LOW     (7 <<  11)
+#define LED_RED_MEDIUM    (15 << 11)
+#define LED_RED_HIGH    (31 << 11)
+
+#define LED_GREEN_VERYLOW (1 <<  5)
+#define LED_GREEN_LOW     (15 << 5)
+#define LED_GREEN_MEDIUM  (31 << 5)
+#define LED_GREEN_HIGH    (63 << 5)
+
+#define LED_BLUE_VERYLOW  3
+#define LED_BLUE_LOW    7
+#define LED_BLUE_MEDIUM   15
+#define LED_BLUE_HIGH     31
+
+#define LED_ORANGE_VERYLOW  (LED_RED_VERYLOW + LED_GREEN_VERYLOW)
+#define LED_ORANGE_LOW    (LED_RED_LOW     + LED_GREEN_LOW)
+#define LED_ORANGE_MEDIUM (LED_RED_MEDIUM  + LED_GREEN_MEDIUM)
+#define LED_ORANGE_HIGH   (LED_RED_HIGH    + LED_GREEN_HIGH)
+
+#define LED_PURPLE_VERYLOW  (LED_RED_VERYLOW + LED_BLUE_VERYLOW)
+#define LED_PURPLE_LOW    (LED_RED_LOW     + LED_BLUE_LOW)
+#define LED_PURPLE_MEDIUM (LED_RED_MEDIUM  + LED_BLUE_MEDIUM)
+#define LED_PURPLE_HIGH   (LED_RED_HIGH    + LED_BLUE_HIGH)
+
+#define LED_CYAN_VERYLOW  (LED_GREEN_VERYLOW + LED_BLUE_VERYLOW)
+#define LED_CYAN_LOW    (LED_GREEN_LOW     + LED_BLUE_LOW)
+#define LED_CYAN_MEDIUM   (LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
+#define LED_CYAN_HIGH   (LED_GREEN_HIGH    + LED_BLUE_HIGH)
+
+#define LED_WHITE_VERYLOW (LED_RED_VERYLOW + LED_GREEN_VERYLOW + LED_BLUE_VERYLOW)
+#define LED_WHITE_LOW   (LED_RED_LOW     + LED_GREEN_LOW     + LED_BLUE_LOW)
+#define LED_WHITE_MEDIUM  (LED_RED_MEDIUM  + LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
+#define LED_WHITE_HIGH    (LED_RED_HIGH    + LED_GREEN_HIGH    + LED_BLUE_HIGH)
+
 extern const char index_html[];
 extern const char main_js[];
+
+const String HOTSPOT_ADDRESS = "112bdGoWiDD9FTfTMHt2xgbAY2mn6dEULjGxwpZfJfhQRS9TYRGx";
+const String ACCOUNT_ADDRESS = "14so6GT2PBAkttTL1askWJ2NfdYQycj9JhLTmVoPDSj7nRvTyAD";
 
 // QUICKFIX...See https://github.com/esp8266/Arduino/issues/263
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
 #define bool_to_str(a) ((a)?("true"):("false"))
 
+#define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
+
 #define MATRIX_WIDTH 32
 #define MATRIX_HEIGHT 8
 
+#define HTTP_PORT 80
+
 // MATRIX DECLARATION:
+// Parameter 1 = width of NeoPixel matrix
+// Parameter 2 = height of matrix
+// Parameter 3 = pin number (most are valid)
+// Parameter 4 = matrix layout flags, add together as needed:
+//   NEO_MATRIX_TOP, NEO_MATRIX_BOTTOM, NEO_MATRIX_LEFT, NEO_MATRIX_RIGHT:
+//     Position of the FIRST LED in the matrix; pick two, e.g.
+//     NEO_MATRIX_TOP + NEO_MATRIX_LEFT for the top-left corner.
+//   NEO_MATRIX_ROWS, NEO_MATRIX_COLUMNS: LEDs are arranged in horizontal
+//     rows or in vertical columns, respectively; pick one or the other.
+//   NEO_MATRIX_PROGRESSIVE, NEO_MATRIX_ZIGZAG: all rows/columns proceed
+//     in the same order, or alternate lines reverse direction; pick one.
+//   See example below for these values in action.
+// Parameter 5 = pixel type flags, add together as needed:
+//   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
+//   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
+//   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
+//   NEO_GRBW    Pixels are wired for GRBW bitstream (RGB+W NeoPixel products)
+//   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
+
+
+// Example for NeoPixel Shield.  In this application we'd like to use it
+// as a 5x8 tall matrix, with the USB port positioned at the top of the
+// Arduino.  When held that way, the first pixel is at the top right, and
+// lines are arranged in columns, progressive order.  The shield uses
+// 800 KHz (v2) pixels that expect GRB color data.
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, PIN,
                             NEO_MATRIX_TOP     + NEO_MATRIX_LEFT +
                             NEO_MATRIX_ROWS + NEO_MATRIX_ZIGZAG,
                             NEO_GRB            + NEO_KHZ800);
-
-
-#define HTTP_PORT 80
+//WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 WEB_SERVER server(HTTP_PORT);
 
-#define WIFI_TIMEOUT 300             // checks WiFi every ...s. Reset after this time, if WiFi cannot reconnect.
-
+#define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
 #define DISPLAY_UPDATE_INTERVAL 100
-
-#define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
-
-HTTPClient http;
-
 int scroll_speed = 500;
 int scroll_pos = 0;
 
-
-// Millisecond resolution events
 unsigned long auto_last_change = 0;
 unsigned long last_wifi_check_time = 0;
 unsigned long last_display_update_time = 0;
 unsigned long last_pos_update_time = 0;
 
-// Stat display bools
+
 bool display_daily_average = true;
 bool display_wallet_value = true;
 bool display_daily_total = true;
@@ -89,8 +149,6 @@ bool display_thirty_day_total = true;
 bool display_witnesses = true;
 bool display_oracle_price = true;
 
-
-// Helium stats
 float daily_average = 0;
 float daily_total = 0;
 float wallet_value = 0;
@@ -99,12 +157,9 @@ float thirty_day_total = 0;
 float witnesses = 0;
 float oracle_price = 0;
 
-// Counters and status variables
 int animationCounter = 0;
 boolean happyDanceAnimation = false;
 boolean initializedWalletValue = false;
-
-String display_string; // String to hold the display info
 
 Timezone Omaha;
 
@@ -179,47 +234,7 @@ time_t retryUpdateInterval() {
   return event_time;
 }
 
-void loop() {
-  //timeClient.update();
-  //Serial.println(Omaha.dateTime(ISO8601));
-  events();
-  ArduinoOTA.handle();
-  // put your main code here, to run repeatedly:
-  server.handleClient();
-  yield();
 
-  unsigned long now_ms = millis();
-  if (happyDanceAnimation) {
-    //TODO: Fancy animation because we made money
-    deposit_animation();
-    animationCounter++;
-    yield();
-  } else {
-    if (previous_wallet_value < wallet_value) {
-      if (initializedWalletValue) {
-        Serial.println("Starting Happy Dance animation");
-        Serial.println(previous_wallet_value);
-        Serial.println(wallet_value);
-        previous_wallet_value = wallet_value;
-        happyDanceAnimation = true;
-      }
-    } else {
-      if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
-        update_display();
-        last_display_update_time = now_ms;
-      }
-      if (now_ms - last_pos_update_time > scroll_speed) {
-        scroll_text();
-        last_pos_update_time = now_ms;
-      }
-    }
-  }
-  //  if (display_clock % 600 == 0) {
-  //    get_daily_total();
-  //  }
-  //delay(1000);
-  yield();
-}
 
 /*
    Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
@@ -256,7 +271,61 @@ void wifi_setup() {
   Serial.println();
 }
 
+String display_string;
 
+void loop() {
+  //timeClient.update();
+  //Serial.println(Omaha.dateTime(ISO8601));
+  events();
+  ArduinoOTA.handle();
+  // put your main code here, to run repeatedly:
+  server.handleClient();
+
+  unsigned long now_ms = millis();
+  if (happyDanceAnimation) {
+    //TODO: Fancy animation because we made money
+    deposit_animation();
+    animationCounter++;
+  } else {
+    if (previous_wallet_value < wallet_value) {
+      if (initializedWalletValue) {
+        Serial.println("Starting Happy Dance animation");
+        Serial.println(previous_wallet_value);
+        Serial.println(wallet_value);
+        previous_wallet_value = wallet_value;
+        happyDanceAnimation = true;
+      }
+    } else {
+      if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
+        update_display();
+        last_display_update_time = now_ms;
+      }
+      if (now_ms - last_pos_update_time > scroll_speed) {
+        scroll_text();
+        last_pos_update_time = now_ms;
+      }
+    }
+  }
+  //  if (display_clock % 600 == 0) {
+  //    get_daily_total();
+  //  }
+  //delay(1000);
+}
+
+void deposit_animation() {
+  //Serial.println("Updating display");
+  int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
+  matrix.clear();
+  matrix.drawRect(0, 0, MATRIX_WIDTH, MATRIX_HEIGHT, LED_BLUE_HIGH);
+  matrix.drawRect(1, 1, MATRIX_WIDTH - 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
+  matrix.fillRect(2, 2, MATRIX_WIDTH - 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
+  matrix.fillRect(3, 3, MATRIX_WIDTH - 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
+  matrix.show();
+  if (animationCounter == 50) {
+    happyDanceAnimation = false;
+    animationCounter = 0;
+  }
+}
 //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 
 
@@ -287,18 +356,18 @@ void scroll_text() {
 }
 
 String build_display_string(int disp_clock) {
-  String temp_display_string = "";
+  String temp_display_string = "  ";
   if (display_daily_total) {
-    temp_display_string = temp_display_string + " 24Hrs:" + daily_total;
+    temp_display_string = temp_display_string + "24Hrs: " + daily_total;
   }
   if (display_wallet_value) {
-    temp_display_string = temp_display_string + " Wallet:" + wallet_value;
+    temp_display_string = temp_display_string + " Wallet: " + wallet_value;
   }
   if (display_thirty_day_total) {
-    temp_display_string = temp_display_string + " 30 Days:" + thirty_day_total;
+    temp_display_string = temp_display_string + " 30 Days: " + thirty_day_total;
   }
   if (display_oracle_price) {
-    temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
+    temp_display_string = temp_display_string + " HNT Value: $" + oracle_price;
   }
   int pos = disp_clock % temp_display_string.length();
 
@@ -352,7 +421,6 @@ void get_daily_total() {
 
     http.end();   //Close connection
   }
-  yield();
 }
 
 void get_wallet_value() {
@@ -403,7 +471,6 @@ void get_wallet_value() {
 
     http.end();   //Close connection
   }
-  yield();
 }
 
 void get_thirty_day_total() {
@@ -445,7 +512,6 @@ void get_thirty_day_total() {
 
     http.end();   //Close connection
   }
-  yield();
 }
 
 void get_oracle_price() {
@@ -487,7 +553,6 @@ void get_oracle_price() {
 
     http.end();   //Close connection
   }
-  yield();
 }
 
 void srv_handle_not_found() {
@@ -582,4 +647,51 @@ void srv_handle_set() {
     }
   }
   server.send(200, "text/plain", "OK");
+}
+
+void OTA_Setup() {
+
+  // Hostname defaults to esp8266-[ChipID]
+  ArduinoOTA.setHostname("heliumticker");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
 }
