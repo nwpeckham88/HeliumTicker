@@ -37,18 +37,3 @@
 #define LED_WHITE_LOW   (LED_RED_LOW     + LED_GREEN_LOW     + LED_BLUE_LOW)
 #define LED_WHITE_MEDIUM  (LED_RED_MEDIUM  + LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
 #define LED_WHITE_HIGH    (LED_RED_HIGH    + LED_GREEN_HIGH    + LED_BLUE_HIGH)
-
-void deposit_animation() {
-  //Serial.println("Updating display");
-  int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
-  matrix.clear();
-  matrix.drawRect(0, 0, MATRIX_WIDTH, MATRIX_HEIGHT, LED_BLUE_HIGH);
-  matrix.drawRect(1, 1, MATRIX_WIDTH - 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
-  matrix.fillRect(2, 2, MATRIX_WIDTH - 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
-  matrix.fillRect(3, 3, MATRIX_WIDTH - 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
-  matrix.show();
-  if (animationCounter == 50) {
-    happyDanceAnimation = false;
-    animationCounter = 0;
-  }
-}

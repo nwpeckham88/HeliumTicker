@@ -20,16 +20,16 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
-#include "helium_animation.h"
 
 // WiFi and Net libraries
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include "WiFiSetup.h"
 #include <ArduinoJson.h>
-#include "ota.h"
-
+#include "helium_animation.h"
+// Sensitive info (WiFi and hotspot info) NOT included in Git
 #include "sensitive.h"
+#include "ota.h"
+#include "server.h"
 
 // Time, event scheduling, and NTP library
 #include <ezTime.h>
@@ -63,17 +63,14 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, PIN,
 #define HTTP_PORT 80
 WEB_SERVER server(HTTP_PORT);
 
-#define WIFI_TIMEOUT 300             // checks WiFi every ...s. Reset after this time, if WiFi cannot reconnect.
-
 #define DISPLAY_UPDATE_INTERVAL 100
-
+#define WIFI_TIMEOUT 300             // checks WiFi every ...s. Reset after this time, if WiFi cannot reconnect.
 #define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
 
 HTTPClient http;
 
 int scroll_speed = 500;
 int scroll_pos = 0;
-
 
 // Millisecond resolution events
 unsigned long auto_last_change = 0;
@@ -88,7 +85,6 @@ bool display_daily_total = true;
 bool display_thirty_day_total = true;
 bool display_witnesses = true;
 bool display_oracle_price = true;
-
 
 // Helium stats
 float daily_average = 0;
@@ -163,22 +159,6 @@ void setup() {
   Serial.println("ready!");
 }
 
-time_t updateInterval() {
-
-  time_t event_time = Omaha.now() + (10 * (60)); // x*(60) = x minutes between updates
-  //Serial.println(event_time);
-  //Serial.println(Omaha.dateTime(event_time));
-  return event_time;
-}
-
-time_t retryUpdateInterval() {
-
-  time_t event_time = Omaha.now() + 20; // Retry in 20 seconds
-  //Serial.println(event_time);
-  //Serial.println(Omaha.dateTime(event_time));
-  return event_time;
-}
-
 void loop() {
   //timeClient.update();
   //Serial.println(Omaha.dateTime(ISO8601));
@@ -221,54 +201,36 @@ void loop() {
   yield();
 }
 
-/*
-   Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
-*/
-void wifi_setup() {
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WIFI_SSID);
+time_t updateInterval() {
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-#ifdef STATIC_IP
-  WiFi.config(ip, gateway, subnet);
-#endif
+  time_t event_time = Omaha.now() + (10 * (60)); // x*(60) = x minutes between updates
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
+  return event_time;
+}
 
-  unsigned long connect_start = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+time_t retryUpdateInterval() {
 
-    if (millis() - connect_start > WIFI_TIMEOUT) {
-      Serial.println();
-      Serial.print("Tried ");
-      Serial.print(WIFI_TIMEOUT);
-      Serial.print("ms. Resetting ESP now.");
-      ESP_RESET;
-    }
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
+  time_t event_time = Omaha.now() + 20; // Retry in 20 seconds
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
+  return event_time;
 }
 
 
-//setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
-
-
-void check_wifi() {
-  Serial.print("Checking WiFi... ");
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi connection lost. Reconnecting...");
-    wifi_setup();
-  } else {
-    Serial.println("OK");
+void deposit_animation() {
+  //Serial.println("Updating display");
+  int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
+  matrix.clear();
+  matrix.drawRect(0, 0, MATRIX_WIDTH, MATRIX_HEIGHT, LED_BLUE_HIGH);
+  matrix.drawRect(1, 1, MATRIX_WIDTH - 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
+  matrix.fillRect(2, 2, MATRIX_WIDTH - 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
+  matrix.fillRect(3, 3, MATRIX_WIDTH - 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
+  matrix.show();
+  if (animationCounter == 50) {
+    happyDanceAnimation = false;
+    animationCounter = 0;
   }
-  setEvent(check_wifi, Omaha.now() + WIFI_TIMEOUT);
 }
 
 void update_display() {
@@ -489,97 +451,52 @@ void get_oracle_price() {
   }
   yield();
 }
+/*
+   Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
+*/
+void wifi_setup() {
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(WIFI_SSID);
 
-void srv_handle_not_found() {
-  server.send(404, "text/plain", "File Not Found");
-}
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+#ifdef STATIC_IP
+  WiFi.config(ip, gateway, subnet);
+#endif
 
-void srv_handle_index_html() {
-  server.send_P(200, "text/html", index_html);
-}
+  unsigned long connect_start = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
 
-void srv_handle_get_stat() {
-  for (uint8_t i = 0; i < server.args(); i++) {
-    if (server.argName(i) == "daily-average") {
-      server.send_P(200, "text/html", bool_to_str(display_daily_average));
-    } else if (server.argName(i) == "total") {
-      server.send_P(200, "text/html", bool_to_str(display_wallet_value));
-    } else if (server.argName(i) == "daily-total") {
-      server.send_P(200, "text/html", bool_to_str(display_daily_total));
-    } else if (server.argName(i) == "thirty-day-total") {
-      server.send_P(200, "text/html", bool_to_str(display_thirty_day_total));
-    } else if (server.argName(i) == "witnesses") {
-      server.send_P(200, "text/html", bool_to_str(display_witnesses));
-    } else {
-      server.send_P(200, "text/html", "false");
+    if (millis() - connect_start > WIFI_TIMEOUT) {
+      Serial.println();
+      Serial.print("Tried ");
+      Serial.print(WIFI_TIMEOUT);
+      Serial.print("ms. Resetting ESP now.");
+      ESP_RESET;
     }
   }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
 }
 
-void srv_handle_set() {
-  for (uint8_t i = 0; i < server.args(); i++) {
-    if (server.argName(i) == "daily-average") {
-      if (server.arg(i) == "true") {
-        display_daily_average = true;
-      } else {
-        display_daily_average = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
 
-    if (server.argName(i) == "daily-total") {
-      if (server.arg(i) == "true") {
-        display_daily_total = true;
-      } else {
-        display_daily_total = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
+//setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 
-    if (server.argName(i) == "total") {
-      if (server.arg(i) == "true") {
-        display_wallet_value = true;
-      } else {
-        display_wallet_value = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
 
-    if (server.argName(i) == "witnesses") {
-      if (server.arg(i) == "true") {
-        display_witnesses = true;
-      } else {
-        display_witnesses = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "thirty-day-total") {
-      if (server.arg(i) == "true") {
-        display_thirty_day_total = true;
-      } else {
-        display_thirty_day_total = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "c") {
-      uint32_t tmp = (uint32_t) strtol(server.arg(i).c_str(), NULL, 10);
-      if (tmp >= 0x000000 && tmp <= 0xFFFFFF) {
-        //matrix.setColor(tmp);
-        uint32_t rgb_color = matrix.ColorHSV(tmp);
-        matrix.setTextColor(rgb_color);
-      }
-    }
-
-    if (server.argName(i) == "b") {
-      if (server.arg(i)[0] == '-') {
-        matrix.setBrightness(max(matrix.getBrightness() - 1, 0));
-      } else {
-        matrix.setBrightness(min(matrix.getBrightness() + 1, 60));
-      }
-      Serial.print("brightness is "); Serial.println(matrix.getBrightness());
-    }
+void check_wifi() {
+  Serial.print("Checking WiFi... ");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost. Reconnecting...");
+    wifi_setup();
+  } else {
+    Serial.println("OK");
   }
-  server.send(200, "text/plain", "OK");
+  setEvent(check_wifi, Omaha.now() + WIFI_TIMEOUT);
 }
