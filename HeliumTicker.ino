@@ -1,4 +1,3 @@
-
 #ifdef ARDUINO_ARCH_ESP32
 #include <WiFi.h>
 #include <WebServer.h>
@@ -11,8 +10,6 @@
 #define WEB_SERVER ESP8266WebServer
 #define ESP_RESET ESP.reset()
 #endif
-
-HTTPClient http;
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
@@ -29,8 +26,6 @@ HTTPClient http;
 
 #include <ArduinoJson.h>
 
-#define PIN D5
-
 #include "sensitive.h"
 
 #define DEFAULT_COLOR 0xAA59AA
@@ -38,7 +33,6 @@ HTTPClient http;
 #define DEFAULT_SPEED 1000
 #define DEFAULT_MODE FX_MODE_STATIC
 #define STEPS_PER_DISPLAY_UPDATE 1000
-
 
 // This could also be defined as matrix->color(255,0,0) but those defines
 // are meant to work for adafruit_gfx backends that are lacking color()
@@ -87,40 +81,17 @@ extern const char main_js[];
 #define max(a,b) ((a)>(b)?(a):(b))
 #define bool_to_str(a) ((a)?("true"):("false"))
 
-#define LED_PIN 2                       // 0 = GPIO0, 2=GPIO2
-
+#define MATRIX_PIN D5
 #define MATRIX_WIDTH 32
 #define MATRIX_HEIGHT 8
 
+
 #define HTTP_PORT 80
 
+HTTPClient http;
+
 // MATRIX DECLARATION:
-// Parameter 1 = width of NeoPixel matrix
-// Parameter 2 = height of matrix
-// Parameter 3 = pin number (most are valid)
-// Parameter 4 = matrix layout flags, add together as needed:
-//   NEO_MATRIX_TOP, NEO_MATRIX_BOTTOM, NEO_MATRIX_LEFT, NEO_MATRIX_RIGHT:
-//     Position of the FIRST LED in the matrix; pick two, e.g.
-//     NEO_MATRIX_TOP + NEO_MATRIX_LEFT for the top-left corner.
-//   NEO_MATRIX_ROWS, NEO_MATRIX_COLUMNS: LEDs are arranged in horizontal
-//     rows or in vertical columns, respectively; pick one or the other.
-//   NEO_MATRIX_PROGRESSIVE, NEO_MATRIX_ZIGZAG: all rows/columns proceed
-//     in the same order, or alternate lines reverse direction; pick one.
-//   See example below for these values in action.
-// Parameter 5 = pixel type flags, add together as needed:
-//   NEO_KHZ800  800 KHz bitstream (most NeoPixel products w/WS2812 LEDs)
-//   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
-//   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
-//   NEO_GRBW    Pixels are wired for GRBW bitstream (RGB+W NeoPixel products)
-//   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-
-
-// Example for NeoPixel Shield.  In this application we'd like to use it
-// as a 5x8 tall matrix, with the USB port positioned at the top of the
-// Arduino.  When held that way, the first pixel is at the top right, and
-// lines are arranged in columns, progressive order.  The shield uses
-// 800 KHz (v2) pixels that expect GRB color data.
-Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, PIN,
+Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, MATRIX_PIN ,
                             NEO_MATRIX_TOP     + NEO_MATRIX_LEFT +
                             NEO_MATRIX_ROWS + NEO_MATRIX_ZIGZAG,
                             NEO_GRB            + NEO_KHZ800);
@@ -137,7 +108,6 @@ unsigned long last_wifi_check_time = 0;
 unsigned long last_display_update_time = 0;
 unsigned long last_pos_update_time = 0;
 
-
 bool display_daily_average = true;
 bool display_wallet_value = true;
 bool display_daily_total = true;
@@ -153,9 +123,12 @@ float thirty_day_total = 0;
 float witnesses = 0;
 float oracle_price = 0;
 
+String last_activity_hash = "";
+
 int animationCounter = 0;
 boolean happyDanceAnimation = false;
 boolean initializedWalletValue = false;
+String display_string;
 
 Timezone Omaha;
 
@@ -207,6 +180,7 @@ void setup() {
   get_wallet_value();
   get_thirty_day_total();
   get_oracle_price();
+  //get_last_activity();
   scroll_text();
   update_display();
   //setEvent( get_daily_total,updateInterval() );
@@ -216,7 +190,7 @@ void setup() {
 
 time_t updateInterval() {
 
-  time_t event_time = Omaha.now() + (10 * (60)); // x*(60) = x minutes between updates
+  time_t event_time = Omaha.now() + (20 * (60)); // x*(60) = x minutes between updates
   //Serial.println(event_time);
   //Serial.println(Omaha.dateTime(event_time));
   return event_time;
@@ -229,8 +203,6 @@ time_t retryUpdateInterval() {
   //Serial.println(Omaha.dateTime(event_time));
   return event_time;
 }
-
-
 
 /*
    Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
@@ -266,8 +238,6 @@ void wifi_setup() {
   Serial.println(WiFi.localIP());
   Serial.println();
 }
-
-String display_string;
 
 void loop() {
   //timeClient.update();
@@ -313,11 +283,11 @@ void deposit_animation() {
   int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
   matrix.clear();
   matrix.drawRect(0, 0, MATRIX_WIDTH, MATRIX_HEIGHT, LED_BLUE_HIGH);
-  matrix.drawRect(1, 1, MATRIX_WIDTH - 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
-  matrix.fillRect(2, 2, MATRIX_WIDTH - 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
-  matrix.fillRect(3, 3, MATRIX_WIDTH - 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
+  matrix.drawRect(1, 1, MATRIX_WIDTH - pos_mod * 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
+  matrix.fillRect(2, 2, MATRIX_WIDTH - pos_mod * 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
+  matrix.fillRect(3, 3, MATRIX_WIDTH - pos_mod * 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
   matrix.show();
-  if (animationCounter == 50) {
+  if (animationCounter == 500) {
     happyDanceAnimation = false;
     animationCounter = 0;
   }
@@ -544,6 +514,54 @@ void get_oracle_price() {
     } else {
       Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_oracle_price, retryUpdateInterval() );
+
+    }
+
+    http.end();   //Close connection
+  }
+}
+
+
+void get_last_activity() {
+  Serial.println("Fetching last activity");
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    String temp_activity_hash = "";
+    
+    WiFiClientSecure client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+
+    client.setInsecure(); // this is the magical line that makes everything work
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/activity?limit=1";
+    Serial.println(query);
+    http.begin(client, query); //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+
+    if (httpCode > 0) { //Check the returning code
+
+      String payload = http.getString();   //Get the request response payload
+
+      StaticJsonDocument<200> filter;
+      filter["data"][0]["hash"] = true;
+      filter["data"][0]["type"] = true;
+
+      StaticJsonDocument<400> doc;
+      deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+
+      // Print the result
+      //serializeJsonPretty(doc, Serial);
+      temp_activity_hash = String(doc["data"][0]["hash"]);
+      if (temp_activity_hash != last_activity_hash){
+        last_activity_hash = temp_activity_hash;
+        Serial.print("Something happened:");
+        //Serial.println(last_activity_hash);
+        Serial.println(String(doc["data"][0]["type"]));
+      }
+      setEvent( get_last_activity, updateInterval() );
+
+    } else {
+      Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( get_last_activity, retryUpdateInterval() );
 
     }
 
