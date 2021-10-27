@@ -18,6 +18,9 @@
 #define PSTR // Make Arduino Due happy
 #endif
 
+// WiFi Password and Hotspot/Account info (not exactly sensitive, but personal)
+#include "sensitive.h"
+
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "WiFiSetup.h"
@@ -26,8 +29,6 @@
 #include <ezTime.h>
 
 #include <ArduinoJson.h>
-
-#include "sensitive.h"
 
 #define DEFAULT_COLOR 0xAA59AA
 #define DEFAULT_BRIGHTNESS 128
