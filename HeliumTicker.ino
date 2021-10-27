@@ -21,6 +21,7 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "WiFiSetup.h"
+#include "BMP.h"
 
 #include <ezTime.h>
 
@@ -277,19 +278,21 @@ void loop() {
   //  }
   //delay(1000);
 }
+int sprite = 0;
 
 void deposit_animation() {
   //Serial.println("Updating display");
   int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
   matrix.clear();
-  matrix.drawRect(0, 0, MATRIX_WIDTH, MATRIX_HEIGHT, LED_BLUE_HIGH);
-  matrix.drawRect(1, 1, MATRIX_WIDTH - pos_mod * 2, MATRIX_HEIGHT - pos_mod, LED_GREEN_MEDIUM);
-  matrix.fillRect(2, 2, MATRIX_WIDTH - pos_mod * 4, MATRIX_HEIGHT - pos_mod * 2, LED_RED_HIGH);
-  matrix.fillRect(3, 3, MATRIX_WIDTH - pos_mod * 6, MATRIX_HEIGHT - pos_mod * 4, LED_ORANGE_MEDIUM);
+  display_rgbBitmap(sprite);
   matrix.show();
-  if (animationCounter == 500) {
+  if (animationCounter == 20) {
     happyDanceAnimation = false;
     animationCounter = 0;
+    sprite++;
+    if (sprite > 3){
+      sprite = 0;
+    }
   }
 }
 //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
@@ -708,4 +711,46 @@ void OTA_Setup() {
     }
   });
   ArduinoOTA.begin();
+}
+
+void display_rgbBitmap(uint8_t bmp_num) {
+  fixdrawRGBBitmap(12, 0, RGB_bmp[bmp_num], 8, 8);
+  matrix.show();
+}
+
+
+// Convert a BGR 4/4/4 bitmap to RGB 5/6/5 used by Adafruit_GFX
+void fixdrawRGBBitmap(int16_t x, int16_t y, const uint16_t *bitmap, int16_t w, int16_t h) {
+  uint16_t RGB_bmp_fixed[w * h];
+  for (uint16_t pixel = 0; pixel < w * h; pixel++) {
+    uint8_t r, g, b;
+    uint16_t color = pgm_read_word(bitmap + pixel);
+
+    //Serial.print(color, HEX);
+    b = (color & 0xF00) >> 8;
+    g = (color & 0x0F0) >> 4;
+    r = color & 0x00F;
+    //Serial.print(" ");
+    //Serial.print(b);
+    //Serial.print("/");
+    //Serial.print(g);
+    //Serial.print("/");
+    //Serial.print(r);
+    //Serial.print(" -> ");
+    // expand from 4/4/4 bits per color to 5/6/5
+    b = map(b, 0, 15, 0, 31);
+    g = map(g, 0, 15, 0, 63);
+    r = map(r, 0, 15, 0, 31);
+    //Serial.print(r);
+    //Serial.print("/");
+    //Serial.print(g);
+    //Serial.print("/");
+    //Serial.print(b);
+    RGB_bmp_fixed[pixel] = (r << 11) + (g << 5) + b;
+   // Serial.print(" -> ");
+    //Serial.print(pixel);
+    //Serial.print(" -> ");
+    //Serial.println(RGB_bmp_fixed[pixel], HEX);
+  }
+  matrix.drawRGBBitmap(x, y, RGB_bmp_fixed, w, h);
 }
