@@ -342,11 +342,11 @@ String build_display_string(int disp_clock) {
   if (display_daily_total) {
     temp_display_string = temp_display_string + "24Hrs:" + daily_total;
   }
+  if (display_thirty_day_total) {
+    temp_display_string = temp_display_string + " Month:" + thirty_day_total;
+  }
   if (display_wallet_value) {
     temp_display_string = temp_display_string + " Wallet:" + String(wallet_value,2);
-  }
-  if (display_thirty_day_total) {
-    temp_display_string = temp_display_string + " Thirty Days:" + thirty_day_total;
   }
   if (display_oracle_price) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
