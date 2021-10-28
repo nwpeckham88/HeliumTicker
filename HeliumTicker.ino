@@ -124,6 +124,7 @@ float previous_wallet_value = 0;
 float thirty_day_total = 0;
 float witnesses = 0;
 float oracle_price = 0;
+float last_wallet_deposit = 0;
 
 String last_activity_hash = "";
 
@@ -153,6 +154,7 @@ void setup() {
   server.on("/", srv_handle_index_html);
   server.on("/set", srv_handle_set);
   server.on("/getStat", srv_handle_get_stat);
+  server.on("/fakeDeposit", srv_handle_fake_deposit);
   server.onNotFound(srv_handle_not_found);
   server.begin();
   Serial.println("HTTP server started.");
@@ -257,10 +259,13 @@ void loop() {
   } else {
     if (previous_wallet_value < wallet_value) {
       if (initializedWalletValue) {
-        Serial.println("Starting Happy Dance animation");
-        Serial.println(previous_wallet_value);
-        Serial.println(wallet_value);
+        last_wallet_deposit = wallet_value - previous_wallet_value;
         previous_wallet_value = wallet_value;
+        Serial.println("Starting Happy Dance animation");
+        //Serial.println(previous_wallet_value);
+        //Serial.println(wallet_value);
+        Serial.print("We made: ");
+        Serial.println(last_wallet_deposit);
         happyDanceAnimation = true;
       }
     } else {
@@ -285,14 +290,21 @@ void deposit_animation() {
   //Serial.println("Updating display");
   int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
   matrix.clear();
-  display_rgbBitmap(sprite);
+  display_rgbBitmap(sprite%3,0,0);
+  matrix.setCursor(9,0);
+  String deposit_string = "We made " + String(last_wallet_deposit,6) + " HNT!  ";
+  int pos = sprite % deposit_string.length();
+  if (pos > 0) {
+    deposit_string = deposit_string.substring(pos) + deposit_string.substring(0, pos - 1);
+  }
+  matrix.print(deposit_string);
   matrix.show();
-  if (animationCounter == 20) {
-    happyDanceAnimation = false;
+  if (animationCounter == 30) {
     animationCounter = 0;
     sprite++;
-    if (sprite > 3){
+    if (sprite > 3*deposit_string.length() - 2){ // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
+      happyDanceAnimation = false;
     }
   }
 }
@@ -328,16 +340,16 @@ void scroll_text() {
 String build_display_string(int disp_clock) {
   String temp_display_string = "  ";
   if (display_daily_total) {
-    temp_display_string = temp_display_string + "24Hrs: " + daily_total;
+    temp_display_string = temp_display_string + "24Hrs:" + daily_total;
   }
   if (display_wallet_value) {
-    temp_display_string = temp_display_string + " Wallet: " + wallet_value;
+    temp_display_string = temp_display_string + " Wallet:" + String(wallet_value,2);
   }
   if (display_thirty_day_total) {
-    temp_display_string = temp_display_string + " 30 Days: " + thirty_day_total;
+    temp_display_string = temp_display_string + " Thirty Days:" + thirty_day_total;
   }
   if (display_oracle_price) {
-    temp_display_string = temp_display_string + " HNT Value: $" + oracle_price;
+    temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
   }
   int pos = disp_clock % temp_display_string.length();
 
@@ -358,7 +370,7 @@ void get_daily_total() {
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
-
+    http.setTimeout(200);
     client.setInsecure(); // this is the magical line that makes everything work
     time_t day_ago = Omaha.now() - 86400;
     String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago, ISO8601);
@@ -398,6 +410,7 @@ void get_wallet_value() {
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
+    http.setTimeout(1000);
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
 
     client.setInsecure(); // this is the magical line that makes everything work
@@ -448,6 +461,7 @@ void get_thirty_day_total() {
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
+    http.setTimeout(200);
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
 
     client.setInsecure(); // this is the magical line that makes everything work
@@ -489,6 +503,7 @@ void get_oracle_price() {
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
+    http.setTimeout(200);
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
 
     client.setInsecure(); // this is the magical line that makes everything work
@@ -533,6 +548,7 @@ void get_last_activity() {
     
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
+    http.setTimeout(200);
     const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
 
     client.setInsecure(); // this is the magical line that makes everything work
@@ -597,6 +613,12 @@ void srv_handle_get_stat() {
       server.send_P(200, "text/html", "false");
     }
   }
+}
+
+void srv_handle_fake_deposit() {
+    happyDanceAnimation = true;
+    last_wallet_deposit = 0.00246;
+    server.send(200, "text/plain", "OK");
 }
 
 void srv_handle_set() {
@@ -714,9 +736,9 @@ void OTA_Setup() {
   ArduinoOTA.begin();
 }
 
-void display_rgbBitmap(uint8_t bmp_num) {
-  fixdrawRGBBitmap(12, 0, RGB_bmp[bmp_num], 8, 8);
-  matrix.show();
+void display_rgbBitmap(uint8_t bmp_num, uint8_t x,uint8_t y) {
+  fixdrawRGBBitmap(x, y, RGB_bmp[bmp_num], 8, 8);
+  //matrix.show();
 }
 
 
