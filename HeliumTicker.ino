@@ -83,10 +83,11 @@ extern const char main_js[];
 #define max(a,b) ((a)>(b)?(a):(b))
 #define bool_to_str(a) ((a)?("true"):("false"))
 
+
+#define PHOTOCELL_PIN A0
 #define MATRIX_PIN D5
 #define MATRIX_WIDTH 32
 #define MATRIX_HEIGHT 8
-
 
 #define HTTP_PORT 80
 
@@ -104,6 +105,8 @@ WEB_SERVER server(HTTP_PORT);
 #define DISPLAY_UPDATE_INTERVAL 100
 int scroll_speed = 500;
 int scroll_pos = 0;
+
+int photocellReading  = 0;
 
 unsigned long auto_last_change = 0;
 unsigned long last_wifi_check_time = 0;
@@ -138,18 +141,23 @@ Timezone Omaha;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  delay(500);
-  Serial.println("\n\nStarting...");
-
-  Serial.println("WS2812FX setup");
+  delay(2000);
   matrix.begin();
   matrix.setTextWrap(false);
   matrix.setBrightness(10);
   matrix.setTextColor(matrix.Color(200, 200, 255));
+  matrix.setCursor(0, 0);
+  matrix.clear();
+  matrix.print("Starting...");
+  matrix.show();
+
+  Serial.println("WS2812FX setup");
+
 
   Serial.println("Wifi setup");
   wifi_setup();
 
+  matrix.print("WiFi Good");
   Serial.println("HTTP server setup");
   server.on("/", srv_handle_index_html);
   server.on("/set", srv_handle_set);
@@ -186,6 +194,7 @@ void setup() {
   get_oracle_price();
   //get_last_activity();
   scroll_text();
+  adjustBrightness();
   update_display();
   //setEvent( get_daily_total,updateInterval() );
 
@@ -208,6 +217,14 @@ time_t retryUpdateInterval() {
   return event_time;
 }
 
+
+time_t lightsReadingInterval() {
+  time_t event_time = Omaha.now() + (5 * (60)); // x*(60) = x minutes between updates
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
+  return event_time;
+}
+
 /*
    Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
 */
@@ -222,11 +239,13 @@ void wifi_setup() {
   WiFi.config(ip, gateway, subnet);
 #endif
 
+  String infoString = "Connecting to ";
+  infoString += WIFI_SSID;
   unsigned long connect_start = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-
+    delay(50);
+    //Serial.print(".");
+    scrollInfoText(infoString);
     if (millis() - connect_start > WIFI_TIMEOUT) {
       Serial.println();
       Serial.print("Tried ");
@@ -243,6 +262,59 @@ void wifi_setup() {
   Serial.println();
 }
 
+
+void scrollInfoText(String text) {
+  static int infoScrollPos = 0;
+  matrix.clear();
+  matrix.setCursor(infoScrollPos, 0);
+  matrix.print(text);
+  matrix.show();
+  infoScrollPos--;
+  int strLen = text.length() * -1 * 6;
+  //Serial.print("scrollPos/strLen:");
+  //  Serial.println(infoScrollPos);
+
+  //  Serial.println(strLen);
+
+  if (infoScrollPos < strLen) {
+    infoScrollPos = 0;
+  }
+
+}
+
+uint16_t firstPixelHue = 0;
+byte wheel_pos = 0;
+int time_stagger = 10;
+int time_stagger_counter = 0;
+
+void draw_rainbow_line() {
+
+  //firstPixelHue += 64; // Advance just a little along the color wheel
+  if (++time_stagger_counter > time_stagger) {
+    wheel_pos++;
+    //matrix.show();
+    time_stagger_counter = 0;
+  }
+  for (int i = 0; i < MATRIX_WIDTH; i++) { // For each pixel in row...
+    //int pixelHue = firstPixelHue + (i * 64*8);
+    //matrix.drawPixel(i,MATRIX_HEIGHT -1,matrix.gamma32(matrix.ColorHSV(pixelHue,255,255)));
+    matrix.drawPixel(i, MATRIX_HEIGHT - 1, wheel(wheel_pos + i));
+  }
+}
+
+uint32_t wheel(byte wheelPos) {
+  wheelPos = 255 - wheelPos;
+  if (wheelPos < 85) {
+    return matrix.Color(255 - wheelPos * 3, 0, wheelPos * 3);
+  }
+  if (wheelPos < 170) {
+    wheelPos -= 85;
+    return matrix.Color(0, wheelPos * 3, 255 - wheelPos * 3);
+  }
+  wheelPos -= 170;
+  return matrix.Color(wheelPos * 3, 255 - wheelPos * 3, 0);
+}
+
 void loop() {
   //timeClient.update();
   //Serial.println(Omaha.dateTime(ISO8601));
@@ -250,7 +322,6 @@ void loop() {
   ArduinoOTA.handle();
   // put your main code here, to run repeatedly:
   server.handleClient();
-
   unsigned long now_ms = millis();
   if (happyDanceAnimation) {
     //TODO: Fancy animation because we made money
@@ -277,6 +348,8 @@ void loop() {
         scroll_text();
         last_pos_update_time = now_ms;
       }
+      draw_rainbow_line();
+      matrix.show();
     }
   }
   //  if (display_clock % 600 == 0) {
@@ -286,13 +359,24 @@ void loop() {
 }
 int sprite = 0;
 
+void adjustBrightness() {
+  //photocellReading = analogRead(PHOTOCELL_PIN);
+  Serial.println("Adjusting brightness");
+  photocellReading += 10;
+  if (photocellReading > 1023) photocellReading = 0;
+  int newBrightness = map((1023 - photocellReading), 0, 1023, 3, 10);
+  Serial.println(newBrightness);
+  matrix.setBrightness(newBrightness);
+  setEvent(adjustBrightness, lightsReadingInterval());
+}
+
 void deposit_animation() {
   //Serial.println("Updating display");
   int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
   matrix.clear();
-  display_rgbBitmap(sprite%3,0,0);
-  matrix.setCursor(9,0);
-  String deposit_string = "We made " + String(last_wallet_deposit,6) + " HNT!  ";
+  display_rgbBitmap(sprite % 3, 0, 0);
+  matrix.setCursor(9, 0);
+  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT!  ";
   int pos = sprite % deposit_string.length();
   if (pos > 0) {
     deposit_string = deposit_string.substring(pos) + deposit_string.substring(0, pos - 1);
@@ -302,7 +386,7 @@ void deposit_animation() {
   if (animationCounter == 30) {
     animationCounter = 0;
     sprite++;
-    if (sprite > 3*deposit_string.length() - 2){ // Subtract a couple ticks so it doesn't last quite as long.
+    if (sprite > 3 * deposit_string.length() - 2) { // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
       happyDanceAnimation = false;
     }
@@ -327,7 +411,8 @@ void update_display() {
   matrix.fillScreen(0);
   matrix.setCursor(0, 0);
   matrix.print(display_string);
-  matrix.show();
+  //draw_rainbow_line();
+  //matrix.show();
   //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 }
 
@@ -346,7 +431,7 @@ String build_display_string(int disp_clock) {
     temp_display_string = temp_display_string + " Month:" + thirty_day_total;
   }
   if (display_wallet_value) {
-    temp_display_string = temp_display_string + " Wallet:" + String(wallet_value,2);
+    temp_display_string = temp_display_string + " Wallet:" + String(wallet_value, 2);
   }
   if (display_oracle_price) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
@@ -431,12 +516,12 @@ void get_wallet_value() {
 
       // Print the result
       //serializeJsonPretty(doc, Serial);
-      if (initializedWalletValue){
+      if (initializedWalletValue) {
         previous_wallet_value = wallet_value;
       }
       wallet_value = doc["data"]["balance"];
       wallet_value /= 100000000;
-      if (!initializedWalletValue){
+      if (!initializedWalletValue) {
         previous_wallet_value = wallet_value;
       }
 
@@ -541,11 +626,53 @@ void get_oracle_price() {
 }
 
 
+void get_binance_price() {
+  Serial.println("Fetching oracle price");
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    WiFiClientSecure client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+    http.setTimeout(200);
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+
+    client.setInsecure(); // this is the magical line that makes everything work
+    String query = "/api/v3/ticker/price?symbol=HNT";
+    Serial.println(query);
+    http.begin(client, query); //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+
+    if (httpCode > 0) { //Check the returning code
+
+      String payload = http.getString();   //Get the request response payload
+
+      StaticJsonDocument<200> filter;
+      filter["data"]["price"] = true;
+
+      StaticJsonDocument<400> doc;
+      deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+
+      // Print the result
+      //serializeJsonPretty(doc, Serial);
+      oracle_price = doc["data"]["price"];
+      oracle_price /= 100000000;
+      Serial.print("Oracle Price: ");
+      Serial.println(oracle_price);             //Print the response payload
+      setEvent( get_oracle_price, updateInterval() );
+
+    } else {
+      Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( get_oracle_price, retryUpdateInterval() );
+
+    }
+
+    http.end();   //Close connection
+  }
+}
+
 void get_last_activity() {
   Serial.println("Fetching last activity");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     String temp_activity_hash = "";
-    
+
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
     http.setTimeout(200);
@@ -571,7 +698,7 @@ void get_last_activity() {
       // Print the result
       //serializeJsonPretty(doc, Serial);
       temp_activity_hash = String(doc["data"][0]["hash"]);
-      if (temp_activity_hash != last_activity_hash){
+      if (temp_activity_hash != last_activity_hash) {
         last_activity_hash = temp_activity_hash;
         Serial.print("Something happened:");
         //Serial.println(last_activity_hash);
@@ -616,9 +743,9 @@ void srv_handle_get_stat() {
 }
 
 void srv_handle_fake_deposit() {
-    happyDanceAnimation = true;
-    last_wallet_deposit = 0.00246;
-    server.send(200, "text/plain", "OK");
+  happyDanceAnimation = true;
+  last_wallet_deposit = 0.00246;
+  server.send(200, "text/plain", "OK");
 }
 
 void srv_handle_set() {
@@ -736,7 +863,7 @@ void OTA_Setup() {
   ArduinoOTA.begin();
 }
 
-void display_rgbBitmap(uint8_t bmp_num, uint8_t x,uint8_t y) {
+void display_rgbBitmap(uint8_t bmp_num, uint8_t x, uint8_t y) {
   fixdrawRGBBitmap(x, y, RGB_bmp[bmp_num], 8, 8);
   //matrix.show();
 }
@@ -770,7 +897,7 @@ void fixdrawRGBBitmap(int16_t x, int16_t y, const uint16_t *bitmap, int16_t w, i
     //Serial.print("/");
     //Serial.print(b);
     RGB_bmp_fixed[pixel] = (r << 11) + (g << 5) + b;
-   // Serial.print(" -> ");
+    // Serial.print(" -> ");
     //Serial.print(pixel);
     //Serial.print(" -> ");
     //Serial.println(RGB_bmp_fixed[pixel], HEX);
