@@ -144,28 +144,28 @@ void setup() {
   delay(2000);
   matrix.begin();
   matrix.setTextWrap(false);
-  matrix.setBrightness(10);
+  matrix.setBrightness(5);
   matrix.setTextColor(matrix.Color(200, 200, 255));
   matrix.setCursor(0, 0);
   matrix.clear();
   matrix.print("Starting...");
   matrix.show();
 
-  Serial.println("WS2812FX setup");
+  //Serial.println("WS2812FX setup");
 
 
-  Serial.println("Wifi setup");
+  //Serial.println("Wifi setup");
   wifi_setup();
 
   matrix.print("WiFi Good");
-  Serial.println("HTTP server setup");
+  //Serial.println("HTTP server setup");
   server.on("/", srv_handle_index_html);
   server.on("/set", srv_handle_set);
   server.on("/getStat", srv_handle_get_stat);
   server.on("/fakeDeposit", srv_handle_fake_deposit);
   server.onNotFound(srv_handle_not_found);
   server.begin();
-  Serial.println("HTTP server started.");
+  //Serial.println("HTTP server started.");
 
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
@@ -177,16 +177,16 @@ void setup() {
 
   waitForSync();
 
-  Serial.println("UTC: " + UTC.dateTime());
+  //Serial.println("UTC: " + UTC.dateTime());
 
   Omaha.setLocation("America/Chicago");
   Omaha.setDefault();
-  Serial.println("Omaha time: " + Omaha.dateTime());
+  //Serial.println("Omaha time: " + Omaha.dateTime());
 
   //timeClient.begin();
 
-  Serial.println("getting data");
-
+  //Serial.println("getting data");
+  matrix.setBrightness(70);
   check_wifi();
   get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
   get_wallet_value();
@@ -198,7 +198,7 @@ void setup() {
   update_display();
   //setEvent( get_daily_total,updateInterval() );
 
-  Serial.println("ready!");
+  //Serial.println("ready!");
 }
 
 time_t updateInterval() {
@@ -229,9 +229,9 @@ time_t lightsReadingInterval() {
    Connect to WiFi. If no connection is made within WIFI_TIMEOUT, ESP gets reset.
 */
 void wifi_setup() {
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WIFI_SSID);
+  //Serial.println();
+  //Serial.print("Connecting to ");
+  //Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -247,19 +247,19 @@ void wifi_setup() {
     //Serial.print(".");
     scrollInfoText(infoString);
     if (millis() - connect_start > WIFI_TIMEOUT) {
-      Serial.println();
-      Serial.print("Tried ");
-      Serial.print(WIFI_TIMEOUT);
-      Serial.print("ms. Resetting ESP now.");
+      //Serial.println();
+      //Serial.print("Tried ");
+      //Serial.print(WIFI_TIMEOUT);
+      //Serial.print("ms. Resetting ESP now.");
       ESP_RESET;
     }
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
+  //Serial.println("");
+  //Serial.println("WiFi connected");
+  //Serial.print("IP address: ");
+  //Serial.println(WiFi.localIP());
+  //Serial.println();
 }
 
 
@@ -332,11 +332,11 @@ void loop() {
       if (initializedWalletValue) {
         last_wallet_deposit = wallet_value - previous_wallet_value;
         previous_wallet_value = wallet_value;
-        Serial.println("Starting Happy Dance animation");
+        //Serial.println("Starting Happy Dance animation");
         //Serial.println(previous_wallet_value);
         //Serial.println(wallet_value);
-        Serial.print("We made: ");
-        Serial.println(last_wallet_deposit);
+        //Serial.print("We made: ");
+        //Serial.println(last_wallet_deposit);
         happyDanceAnimation = true;
       }
     } else {
@@ -348,6 +348,7 @@ void loop() {
         scroll_text();
         last_pos_update_time = now_ms;
       }
+      yield();
       draw_rainbow_line();
       matrix.show();
     }
@@ -361,11 +362,11 @@ int sprite = 0;
 
 void adjustBrightness() {
   //photocellReading = analogRead(PHOTOCELL_PIN);
-  Serial.println("Adjusting brightness");
+  //Serial.println("Adjusting brightness");
   photocellReading += 10;
   if (photocellReading > 1023) photocellReading = 0;
   int newBrightness = map((1023 - photocellReading), 0, 1023, 3, 10);
-  Serial.println(newBrightness);
+  //Serial.println(newBrightness);
   matrix.setBrightness(newBrightness);
   setEvent(adjustBrightness, lightsReadingInterval());
 }
@@ -376,7 +377,8 @@ void deposit_animation() {
   matrix.clear();
   display_rgbBitmap(sprite % 3, 0, 0);
   matrix.setCursor(9, 0);
-  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT!  ";
+  float hntVal = last_wallet_deposit * oracle_price;
+  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT (currently worth $" + String(hntVal, 2) + ")";
   int pos = sprite % deposit_string.length();
   if (pos > 0) {
     deposit_string = deposit_string.substring(pos) + deposit_string.substring(0, pos - 1);
@@ -386,7 +388,7 @@ void deposit_animation() {
   if (animationCounter == 30) {
     animationCounter = 0;
     sprite++;
-    if (sprite > 3 * deposit_string.length() - 2) { // Subtract a couple ticks so it doesn't last quite as long.
+    if (sprite > 3 * int(deposit_string.length()/3)) { // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
       happyDanceAnimation = false;
     }
@@ -396,12 +398,12 @@ void deposit_animation() {
 
 
 void check_wifi() {
-  Serial.print("Checking WiFi... ");
+  //Serial.print("Checking WiFi... ");
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi connection lost. Reconnecting...");
+    //Serial.println("WiFi connection lost. Reconnecting...");
     wifi_setup();
   } else {
-    Serial.println("OK");
+    //Serial.println("OK");
   }
   setEvent(check_wifi, Omaha.now() + WIFI_TIMEOUT);
 }
@@ -450,7 +452,7 @@ String build_display_string(int disp_clock) {
 }
 
 void get_daily_total() {
-  Serial.println("Fetching new daily total");
+  //Serial.println("Fetching new daily total");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -459,7 +461,7 @@ void get_daily_total() {
     client.setInsecure(); // this is the magical line that makes everything work
     time_t day_ago = Omaha.now() - 86400;
     String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago, ISO8601);
-    Serial.println(query);
+    //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
@@ -476,12 +478,12 @@ void get_daily_total() {
       // Print the result
       //serializeJsonPretty(doc, Serial);
       daily_total = doc["data"]["total"];
-      Serial.print("Daily total updated: ");
-      Serial.println(daily_total);             //Print the response payload
+      //Serial.print("Daily total updated: ");
+      //Serial.println(daily_total);             //Print the response payload
       setEvent( get_daily_total, updateInterval() );
 
     } else {
-      Serial.println("Failed. Retrying in 20 seconds");
+      //Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_daily_total, retryUpdateInterval() );
 
     }
@@ -491,7 +493,7 @@ void get_daily_total() {
 }
 
 void get_wallet_value() {
-  Serial.println("Fetching new wallet value");
+  //Serial.println("Fetching new wallet value");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -500,7 +502,7 @@ void get_wallet_value() {
 
     client.setInsecure(); // this is the magical line that makes everything work
     String query = "https://api.helium.io/v1/accounts/" + ACCOUNT_ADDRESS;
-    Serial.println(query);
+    //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
@@ -527,12 +529,12 @@ void get_wallet_value() {
 
       initializedWalletValue = true;
 
-      Serial.print("Wallet Value: ");
-      Serial.println(wallet_value);             //Print the response payload
+      //Serial.print("Wallet Value: ");
+      //Serial.println(wallet_value);             //Print the response payload
       setEvent( get_wallet_value, updateInterval() );
 
     } else {
-      Serial.println("Failed. Retrying in 20 seconds");
+      //Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_wallet_value, retryUpdateInterval() );
 
     }
@@ -542,7 +544,7 @@ void get_wallet_value() {
 }
 
 void get_thirty_day_total() {
-  Serial.println("Fetching new thiry day total");
+  //Serial.println("Fetching new thiry day total");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -552,7 +554,7 @@ void get_thirty_day_total() {
     client.setInsecure(); // this is the magical line that makes everything work
     time_t month_ago = Omaha.now() - 86400 * 30;
     String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(month_ago, ISO8601);
-    Serial.println(query);
+    //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
@@ -569,12 +571,12 @@ void get_thirty_day_total() {
       // Print the result
       //serializeJsonPretty(doc, Serial);
       thirty_day_total = doc["data"]["total"];
-      Serial.print("30 Day Total: ");
-      Serial.println(thirty_day_total);             //Print the response payload
+      //Serial.print("30 Day Total: ");
+      //Serial.println(thirty_day_total);             //Print the response payload
       setEvent( get_thirty_day_total, updateInterval() );
 
     } else {
-      Serial.println("Failed. Retrying in 20 seconds");
+      //Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_thirty_day_total, retryUpdateInterval() );
 
     }
@@ -584,7 +586,7 @@ void get_thirty_day_total() {
 }
 
 void get_oracle_price() {
-  Serial.println("Fetching oracle price");
+  //Serial.println("Fetching oracle price");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -593,7 +595,7 @@ void get_oracle_price() {
 
     client.setInsecure(); // this is the magical line that makes everything work
     String query = "https://api.helium.io/v1/oracle/prices/current";
-    Serial.println(query);
+    //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
@@ -611,12 +613,12 @@ void get_oracle_price() {
       //serializeJsonPretty(doc, Serial);
       oracle_price = doc["data"]["price"];
       oracle_price /= 100000000;
-      Serial.print("Oracle Price: ");
-      Serial.println(oracle_price);             //Print the response payload
+      //Serial.print("Oracle Price: ");
+      //Serial.println(oracle_price);             //Print the response payload
       setEvent( get_oracle_price, updateInterval() );
 
     } else {
-      Serial.println("Failed. Retrying in 20 seconds");
+      //Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_oracle_price, retryUpdateInterval() );
 
     }
@@ -627,7 +629,7 @@ void get_oracle_price() {
 
 
 void get_binance_price() {
-  Serial.println("Fetching oracle price");
+  //Serial.println("Fetching oracle price");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     WiFiClientSecure client;
     HTTPClient http;  //Declare an object of class HTTPClient
@@ -636,7 +638,7 @@ void get_binance_price() {
 
     client.setInsecure(); // this is the magical line that makes everything work
     String query = "/api/v3/ticker/price?symbol=HNT";
-    Serial.println(query);
+    //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
@@ -654,12 +656,12 @@ void get_binance_price() {
       //serializeJsonPretty(doc, Serial);
       oracle_price = doc["data"]["price"];
       oracle_price /= 100000000;
-      Serial.print("Oracle Price: ");
-      Serial.println(oracle_price);             //Print the response payload
+      //Serial.print("Oracle Price: ");
+      //Serial.println(oracle_price);             //Print the response payload
       setEvent( get_oracle_price, updateInterval() );
 
     } else {
-      Serial.println("Failed. Retrying in 20 seconds");
+      //Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_oracle_price, retryUpdateInterval() );
 
     }
@@ -669,7 +671,7 @@ void get_binance_price() {
 }
 
 void get_last_activity() {
-  Serial.println("Fetching last activity");
+  //Serial.println("Fetching last activity");
   if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
     String temp_activity_hash = "";
 
@@ -680,7 +682,7 @@ void get_last_activity() {
 
     client.setInsecure(); // this is the magical line that makes everything work
     String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/activity?limit=1";
-    Serial.println(query);
+    //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
 
@@ -700,14 +702,14 @@ void get_last_activity() {
       temp_activity_hash = String(doc["data"][0]["hash"]);
       if (temp_activity_hash != last_activity_hash) {
         last_activity_hash = temp_activity_hash;
-        Serial.print("Something happened:");
-        //Serial.println(last_activity_hash);
-        Serial.println(String(doc["data"][0]["type"]));
+        //Serial.print("Something happened:");
+        ////Serial.println(last_activity_hash);
+        //Serial.println(String(doc["data"][0]["type"]));
       }
       setEvent( get_last_activity, updateInterval() );
 
     } else {
-      Serial.println("Failed. Retrying in 20 seconds");
+      //Serial.println("Failed. Retrying in 20 seconds");
       setEvent( get_last_activity, retryUpdateInterval() );
 
     }
@@ -810,7 +812,7 @@ void srv_handle_set() {
       } else {
         matrix.setBrightness(min(matrix.getBrightness() + 1, 60));
       }
-      Serial.print("brightness is "); Serial.println(matrix.getBrightness());
+      //Serial.print("brightness is "); Serial.println(matrix.getBrightness());
     }
   }
   server.send(200, "text/plain", "OK");
@@ -838,26 +840,26 @@ void OTA_Setup() {
     }
 
     // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
+    //Serial.println("Start updating " + type);
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    //Serial.println("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
+    //Serial.printf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
+      //Serial.println("Auth Failed");
     } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
+      //Serial.println("Begin Failed");
     } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
+      //Serial.println("Connect Failed");
     } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
+      //Serial.println("Receive Failed");
     } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
+      //Serial.println("End Failed");
     }
   });
   ArduinoOTA.begin();
@@ -876,12 +878,12 @@ void fixdrawRGBBitmap(int16_t x, int16_t y, const uint16_t *bitmap, int16_t w, i
     uint8_t r, g, b;
     uint16_t color = pgm_read_word(bitmap + pixel);
 
-    //Serial.print(color, HEX);
+    ////Serial.print(color, HEX);
     b = (color & 0xF00) >> 8;
     g = (color & 0x0F0) >> 4;
     r = color & 0x00F;
-    //Serial.print(" ");
-    //Serial.print(b);
+    ////Serial.print(" ");
+    ////Serial.print(b);
     //Serial.print("/");
     //Serial.print(g);
     //Serial.print("/");
