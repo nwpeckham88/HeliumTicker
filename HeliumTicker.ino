@@ -378,7 +378,7 @@ void deposit_animation() {
   display_rgbBitmap(sprite % 3, 0, 0);
   matrix.setCursor(9, 0);
   float hntVal = last_wallet_deposit * oracle_price;
-  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT (currently worth $" + String(hntVal, 2) + ")";
+  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT (worth $" + String(hntVal, 2) + ")";
   int pos = sprite % deposit_string.length();
   if (pos > 0) {
     deposit_string = deposit_string.substring(pos) + deposit_string.substring(0, pos - 1);
@@ -388,7 +388,7 @@ void deposit_animation() {
   if (animationCounter == 30) {
     animationCounter = 0;
     sprite++;
-    if (sprite > 3 * int(deposit_string.length()/3)) { // Subtract a couple ticks so it doesn't last quite as long.
+    if (sprite > 3 * int(deposit_string.length()/2)) { // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
       happyDanceAnimation = false;
     }
