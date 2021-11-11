@@ -15,7 +15,7 @@
 #define ESP_RESET ESP.reset()
 #endif
 
-
+#include <EEPROM.h>
 #include <ESPDash.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
@@ -44,6 +44,14 @@
 #define DEFAULT_SPEED 1000
 #define DEFAULT_MODE FX_MODE_STATIC
 #define STEPS_PER_DISPLAY_UPDATE 1000
+
+#define work_equivalent_EEPROM 1
+#define display_wallet_EEPROM 2
+#define display_daily_EEPROM 3
+#define display_thirty_day_EEPROM 4
+#define display_brightness_EEPROM 5
+#define display_oracle_price_EEPROM 6
+#define clock_mode_EEPROM 7
 
 // This could also be defined as matrix->color(255,0,0) but those defines
 // are meant to work for adafruit_gfx backends that are lacking color()
@@ -94,7 +102,6 @@ extern const char main_js[];
 #define max(a,b) ((a)>(b)?(a):(b))
 #define bool_to_str(a) ((a)?("true"):("false"))
 
-
 #define PHOTOCELL_PIN A0
 #define MATRIX_PIN D5
 #define MATRIX_WIDTH 32
@@ -132,9 +139,7 @@ bool display_work_equivalent = true;
 bool display_wallet_value = true;
 bool display_daily_total = true;
 bool display_thirty_day_total = true;
-bool display_witnesses = true;
 bool display_oracle_price = true;
-
 bool clockMode = false;
 
 float daily_total = 0;
@@ -245,8 +250,10 @@ void setup() {
 
   //timeClient.begin();
 
+  EEPROM_read();
+
   setUpDashboard();
-  
+
   //Serial.println("getting data");
   matrix.setBrightness(display_brightness);
   check_wifi();
@@ -270,6 +277,7 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_oracle_price = value;
+    EEPROM.write(display_oracle_price_EEPROM, display_oracle_price);
     oracle_price_card.update(value);
     dashboard.sendUpdates();
   });
@@ -279,6 +287,7 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_work_equivalent = value;
+    EEPROM.write(work_equivalent_EEPROM, display_work_equivalent);
     work_equivalent_card.update(value);
     dashboard.sendUpdates();
   });
@@ -288,6 +297,7 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_daily_total = value;
+    EEPROM.write(display_daily_EEPROM, display_daily_total);
     daily_total_card.update(value);
     dashboard.sendUpdates();
   });
@@ -297,6 +307,7 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_thirty_day_total = value;
+    EEPROM.write(display_thirty_day_EEPROM, display_thirty_day_total);
     thirty_day_total_card.update(value);
     dashboard.sendUpdates();
   });
@@ -306,6 +317,7 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_wallet_value = value;
+    EEPROM.write(display_wallet_EEPROM, display_wallet_value);
     wallet_value_card.update(value);
     dashboard.sendUpdates();
   });
@@ -316,17 +328,19 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_brightness = value;
+    EEPROM.write(display_brightness_EEPROM, display_brightness);
     matrix.setBrightness(display_brightness);
     brightness_card.update(display_brightness);
     dashboard.sendUpdates();
   });
 
-  
+
   clock_mode_card.attachCallback([&](bool value) {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     clockMode = value;
+    EEPROM.write(clock_mode_EEPROM, clockMode);
     clock_mode_card.update(value);
     dashboard.sendUpdates();
   });
@@ -362,6 +376,16 @@ time_t lightsReadingInterval() {
   //Serial.println(event_time);
   //Serial.println(Omaha.dateTime(event_time));
   return event_time;
+}
+
+void EEPROM_read() {
+  display_work_equivalent = bool(EEPROM.read(work_equivalent_EEPROM));
+  display_oracle_price = bool(EEPROM.read(display_oracle_EEPROM));
+  display_wallet_value = bool(EEPROM.read(display_wallet_EEPROM));
+  display_thirty_day_total = bool(EEPROM.read(display_thirty_day_EEPROM));
+  display_daily_total = bool(EEPROM.read(display_daily_EEPROM));
+  display_brightness = byte(EEPROM.read(display_brightness_EEPROM));
+  clockMode = bool(EEPROM.read(clockMode_EEPROM));
 }
 
 /*
@@ -583,9 +607,9 @@ String build_display_string(int disp_clock) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
   }
   if (display_work_equivalent) {
-    temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total/120*oracle_price,2) + "/hr";
+    temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total / 120 * oracle_price, 2) + "/hr";
   }
-  if (temp_display_string == "  " || clockMode){
+  if (temp_display_string == "  " || clockMode) {
     temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
   }
   int pos = disp_clock % temp_display_string.length();
