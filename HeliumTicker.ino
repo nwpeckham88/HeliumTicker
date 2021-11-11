@@ -146,6 +146,7 @@ float last_wallet_deposit = 0;
 
 String last_activity_hash = "";
 
+byte display_brightness = 20;
 int animationCounter = 0;
 boolean happyDanceAnimation = false;
 boolean initializedWalletValue = false;
@@ -166,7 +167,7 @@ Card thirty_day_total_card(&dashboard, BUTTON_CARD, "Show 30 Day Total");
   Slider Card
   Format - (Dashboard Instance, Card Type, Card Name, Card Symbol(optional), int min, int max)
 */
-Card slider(&dashboard, SLIDER_CARD, "Test Slider", "", 0, 255);
+Card brightness_card(&dashboard, SLIDER_CARD, "Brightness", "", 0, 255);
 File colorpicker = SPIFFS.open("/tinycolorpicker.js", "r");
 File indexhtml = SPIFFS.open("/index.html", "r");
 
@@ -177,7 +178,7 @@ void setup() {
   matrix.begin();
   matrix.show();
   matrix.setTextWrap(false);
-  matrix.setBrightness(5);
+  matrix.setBrightness(5); // Low power to ensure the ESP gets enough for its power hungry WiFi connection
   matrix.setTextColor(matrix.Color(200, 200, 255));
   matrix.setCursor(0, 0);
   matrix.clear();
@@ -245,7 +246,7 @@ void setup() {
   setUpDashboard();
 
   //Serial.println("getting data");
-  matrix.setBrightness(70);
+  matrix.setBrightness(display_brightness);
   check_wifi();
   get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
   get_wallet_value();
@@ -261,12 +262,12 @@ void setup() {
 }
 
 void setUpDashboard() {
-
   /* Attach Button Callback */
   oracle_price_card.attachCallback([&](bool value) {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
+    display_oracle_price = value;
     oracle_price_card.update(value);
     dashboard.sendUpdates();
   });
@@ -275,6 +276,7 @@ void setUpDashboard() {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
+    display_daily_average = value;
     daily_average_card.update(value);
     dashboard.sendUpdates();
   });
@@ -283,6 +285,7 @@ void setUpDashboard() {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
+    display_daily_total = value;
     daily_total_card.update(value);
     dashboard.sendUpdates();
   });
@@ -291,9 +294,21 @@ void setUpDashboard() {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
+    display_thirty_day_total = value;
     thirty_day_total_card.update(value);
     dashboard.sendUpdates();
   });
+
+  brightness_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    display_brightness = value;
+    matrix.setBrightness(display_brightness);
+    brightness_card.update(value);
+    dashboard.sendUpdates();
+  });
+
 }
 
 time_t updateInterval() {
