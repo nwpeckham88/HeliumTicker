@@ -128,14 +128,15 @@ unsigned long last_wifi_check_time = 0;
 unsigned long last_display_update_time = 0;
 unsigned long last_pos_update_time = 0;
 
-bool display_daily_average = true;
+bool display_work_equivalent = true;
 bool display_wallet_value = true;
 bool display_daily_total = true;
 bool display_thirty_day_total = true;
 bool display_witnesses = true;
 bool display_oracle_price = true;
 
-float daily_average = 0;
+bool clockMode = false;
+
 float daily_total = 0;
 float wallet_value = 0;
 float previous_wallet_value = 0;
@@ -159,10 +160,11 @@ Timezone Omaha;
   Format - (Dashboard Instance, Card Type, Card Name)
 */
 Card oracle_price_card(&dashboard, BUTTON_CARD, "Show Oracle Price");
-Card daily_average_card(&dashboard, BUTTON_CARD, "Show Daily Average");
+Card work_equivalent_card(&dashboard, BUTTON_CARD, "Show Work Equivalent");
 Card daily_total_card(&dashboard, BUTTON_CARD, "Show 24hr Total");
 Card thirty_day_total_card(&dashboard, BUTTON_CARD, "Show 30 Day Total");
-
+Card wallet_value_card(&dashboard, BUTTON_CARD, "Show Wallet Value");
+Card clock_mode_card(&dashboard, BUTTON_CARD, "Clock Mode");
 /*
   Slider Card
   Format - (Dashboard Instance, Card Type, Card Name, Card Symbol(optional), int min, int max)
@@ -244,7 +246,7 @@ void setup() {
   //timeClient.begin();
 
   setUpDashboard();
-
+  
   //Serial.println("getting data");
   matrix.setBrightness(display_brightness);
   check_wifi();
@@ -272,12 +274,12 @@ void setUpDashboard() {
     dashboard.sendUpdates();
   });
 
-  daily_average_card.attachCallback([&](bool value) {
+  work_equivalent_card.attachCallback([&](bool value) {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
-    display_daily_average = value;
-    daily_average_card.update(value);
+    display_work_equivalent = value;
+    work_equivalent_card.update(value);
     dashboard.sendUpdates();
   });
 
@@ -299,16 +301,43 @@ void setUpDashboard() {
     dashboard.sendUpdates();
   });
 
-  brightness_card.attachCallback([&](bool value) {
+  wallet_value_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    display_wallet_value = value;
+    wallet_value_card.update(value);
+    dashboard.sendUpdates();
+  });
+
+
+  brightness_card.attachCallback([&](int value) {
     /* Print our new button value received from dashboard */
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_brightness = value;
     matrix.setBrightness(display_brightness);
-    brightness_card.update(value);
+    brightness_card.update(display_brightness);
     dashboard.sendUpdates();
   });
 
+  
+  clock_mode_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    clockMode = value;
+    clock_mode_card.update(value);
+    dashboard.sendUpdates();
+  });
+
+  work_equivalent_card.update(display_work_equivalent);
+  oracle_price_card.update(display_oracle_price);
+  wallet_value_card.update(display_wallet_value);
+  thirty_day_total_card.update(display_thirty_day_total);
+  daily_total_card.update(display_daily_total);
+  brightness_card.update(display_brightness);
+  clock_mode_card.update(clockMode);
 }
 
 time_t updateInterval() {
@@ -552,6 +581,12 @@ String build_display_string(int disp_clock) {
   }
   if (display_oracle_price) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
+  }
+  if (display_work_equivalent) {
+    temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total/120*oracle_price,2) + "/hr";
+  }
+  if (temp_display_string == "  " || clockMode){
+    temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
   }
   int pos = disp_clock % temp_display_string.length();
 
@@ -898,7 +933,6 @@ void display_rgbBitmap(uint8_t bmp_num, uint8_t x, uint8_t y) {
   fixdrawRGBBitmap(x, y, RGB_bmp[bmp_num], 8, 8);
   //matrix.show();
 }
-
 
 // Convert a BGR 4/4/4 bitmap to RGB 5/6/5 used by Adafruit_GFX
 void fixdrawRGBBitmap(int16_t x, int16_t y, const uint16_t *bitmap, int16_t w, int16_t h) {
