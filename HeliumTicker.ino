@@ -1,22 +1,31 @@
 #ifdef ARDUINO_ARCH_ESP32
 #include <WiFi.h>
 #include <WebServer.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #define WEB_SERVER WebServer
 #define ESP_RESET ESP.restart()
 #else
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+//#include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
 #define WEB_SERVER ESP8266WebServer
 #define ESP_RESET ESP.reset()
 #endif
 
+
+#include <ESPDash.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #ifndef PSTR
 #define PSTR // Make Arduino Due happy
 #endif
+
+#include "FS.h"
+
 
 // WiFi Password and Hotspot/Account info (not exactly sensitive, but personal)
 #include "sensitive.h"
@@ -75,6 +84,8 @@
 #define LED_WHITE_MEDIUM  (LED_RED_MEDIUM  + LED_GREEN_MEDIUM  + LED_BLUE_MEDIUM)
 #define LED_WHITE_HIGH    (LED_RED_HIGH    + LED_GREEN_HIGH    + LED_BLUE_HIGH)
 
+const char* PARAM_MESSAGE = "message";
+
 extern const char index_html[];
 extern const char main_js[];
 
@@ -99,7 +110,11 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, MATR
                             NEO_MATRIX_ROWS + NEO_MATRIX_ZIGZAG,
                             NEO_GRB            + NEO_KHZ800);
 //WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
-WEB_SERVER server(HTTP_PORT);
+/* Start Webserver */
+AsyncWebServer server(80);
+
+/* Attach ESP-DASH to AsyncWebServer */
+ESPDash dashboard(&server);
 
 #define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
 #define DISPLAY_UPDATE_INTERVAL 100
@@ -138,11 +153,29 @@ String display_string;
 
 Timezone Omaha;
 
+/*
+  Button Card
+  Format - (Dashboard Instance, Card Type, Card Name)
+*/
+Card oracle_price_card(&dashboard, BUTTON_CARD, "Show Oracle Price");
+Card daily_average_card(&dashboard, BUTTON_CARD, "Show Daily Average");
+Card daily_total_card(&dashboard, BUTTON_CARD, "Show 24hr Total");
+Card thirty_day_total_card(&dashboard, BUTTON_CARD, "Show 30 Day Total");
+
+/*
+  Slider Card
+  Format - (Dashboard Instance, Card Type, Card Name, Card Symbol(optional), int min, int max)
+*/
+Card slider(&dashboard, SLIDER_CARD, "Test Slider", "", 0, 255);
+File colorpicker = SPIFFS.open("/tinycolorpicker.js", "r");
+File indexhtml = SPIFFS.open("/index.html", "r");
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   delay(2000);
   matrix.begin();
+  matrix.show();
   matrix.setTextWrap(false);
   matrix.setBrightness(5);
   matrix.setTextColor(matrix.Color(200, 200, 255));
@@ -153,17 +186,41 @@ void setup() {
 
   //Serial.println("WS2812FX setup");
 
+  while (!SPIFFS.begin()) {
+    scrollInfoText("SPIFFS Error");
+  }
 
   //Serial.println("Wifi setup");
   wifi_setup();
 
   matrix.print("WiFi Good");
   //Serial.println("HTTP server setup");
-  server.on("/", srv_handle_index_html);
-  server.on("/set", srv_handle_set);
-  server.on("/getStat", srv_handle_get_stat);
+  //server.on("/", srv_handle_index_html);
+  //server.on("/", HTTP_GET, srv_handle_index_html);
+  //server.on("/set", srv_handle_set);
+  //server.on("/getStat", srv_handle_get_stat);
+  server.on("/get", HTTP_GET, [] (AsyncWebServerRequest * request) {
+    String message;
+    if (request->hasParam(PARAM_MESSAGE)) {
+      message = request->getParam(PARAM_MESSAGE)->value();
+    } else {
+      message = "No message sent";
+    }
+    request->send(200, "text/plain", "Hello, GET: " + message);
+  });
+
+  // Send a POST request to <IP>/post with a form field message set to <message>
+  server.on("/post", HTTP_POST, [](AsyncWebServerRequest * request) {
+    String message;
+    if (request->hasParam(PARAM_MESSAGE, true)) {
+      message = request->getParam(PARAM_MESSAGE, true)->value();
+    } else {
+      message = "No message sent";
+    }
+    request->send(200, "text/plain", "Hello, POST: " + message);
+  });
   server.on("/fakeDeposit", srv_handle_fake_deposit);
-  server.onNotFound(srv_handle_not_found);
+  server.onNotFound(notFound);
   server.begin();
   //Serial.println("HTTP server started.");
 
@@ -185,6 +242,8 @@ void setup() {
 
   //timeClient.begin();
 
+  setUpDashboard();
+
   //Serial.println("getting data");
   matrix.setBrightness(70);
   check_wifi();
@@ -199,6 +258,42 @@ void setup() {
   //setEvent( get_daily_total,updateInterval() );
 
   //Serial.println("ready!");
+}
+
+void setUpDashboard() {
+
+  /* Attach Button Callback */
+  oracle_price_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    oracle_price_card.update(value);
+    dashboard.sendUpdates();
+  });
+
+  daily_average_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    daily_average_card.update(value);
+    dashboard.sendUpdates();
+  });
+
+  daily_total_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    daily_total_card.update(value);
+    dashboard.sendUpdates();
+  });
+
+  thirty_day_total_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    thirty_day_total_card.update(value);
+    dashboard.sendUpdates();
+  });
 }
 
 time_t updateInterval() {
@@ -321,7 +416,6 @@ void loop() {
   events();
   ArduinoOTA.handle();
   // put your main code here, to run repeatedly:
-  server.handleClient();
   unsigned long now_ms = millis();
   if (happyDanceAnimation) {
     //TODO: Fancy animation because we made money
@@ -360,6 +454,11 @@ void loop() {
 }
 int sprite = 0;
 
+void nightlySummary() {
+
+  setEvent(nightlySummary, hour(18));
+}
+
 void adjustBrightness() {
   //photocellReading = analogRead(PHOTOCELL_PIN);
   //Serial.println("Adjusting brightness");
@@ -371,6 +470,7 @@ void adjustBrightness() {
   setEvent(adjustBrightness, lightsReadingInterval());
 }
 
+const int danceLoops = 5;
 void deposit_animation() {
   //Serial.println("Updating display");
   int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
@@ -388,7 +488,7 @@ void deposit_animation() {
   if (animationCounter == 30) {
     animationCounter = 0;
     sprite++;
-    if (sprite > 3 * int(deposit_string.length()/2)) { // Subtract a couple ticks so it doesn't last quite as long.
+    if (sprite > danceLoops * int(deposit_string.length() / 2)) { // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
       happyDanceAnimation = false;
     }
@@ -718,104 +818,18 @@ void get_last_activity() {
   }
 }
 
-void srv_handle_not_found() {
-  server.send(404, "text/plain", "File Not Found");
+void notFound(AsyncWebServerRequest *request) {
+  request->send(404, "text/plain", "Not found");
 }
 
-void srv_handle_index_html() {
-  server.send_P(200, "text/html", index_html);
+void srv_handle_index_html(AsyncWebServerRequest * request) {
+  request->send(200, "text/html", index_html);
 }
 
-void srv_handle_get_stat() {
-  for (uint8_t i = 0; i < server.args(); i++) {
-    if (server.argName(i) == "daily-average") {
-      server.send_P(200, "text/html", bool_to_str(display_daily_average));
-    } else if (server.argName(i) == "total") {
-      server.send_P(200, "text/html", bool_to_str(display_wallet_value));
-    } else if (server.argName(i) == "daily-total") {
-      server.send_P(200, "text/html", bool_to_str(display_daily_total));
-    } else if (server.argName(i) == "thirty-day-total") {
-      server.send_P(200, "text/html", bool_to_str(display_thirty_day_total));
-    } else if (server.argName(i) == "witnesses") {
-      server.send_P(200, "text/html", bool_to_str(display_witnesses));
-    } else {
-      server.send_P(200, "text/html", "false");
-    }
-  }
-}
-
-void srv_handle_fake_deposit() {
+void srv_handle_fake_deposit(AsyncWebServerRequest * request) {
   happyDanceAnimation = true;
   last_wallet_deposit = 0.00246;
-  server.send(200, "text/plain", "OK");
-}
-
-void srv_handle_set() {
-  for (uint8_t i = 0; i < server.args(); i++) {
-    if (server.argName(i) == "daily-average") {
-      if (server.arg(i) == "true") {
-        display_daily_average = true;
-      } else {
-        display_daily_average = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "daily-total") {
-      if (server.arg(i) == "true") {
-        display_daily_total = true;
-      } else {
-        display_daily_total = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "total") {
-      if (server.arg(i) == "true") {
-        display_wallet_value = true;
-      } else {
-        display_wallet_value = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "witnesses") {
-      if (server.arg(i) == "true") {
-        display_witnesses = true;
-      } else {
-        display_witnesses = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "thirty-day-total") {
-      if (server.arg(i) == "true") {
-        display_thirty_day_total = true;
-      } else {
-        display_thirty_day_total = false;
-      }
-      server.send_P(200, "text/html", "OK");
-    }
-
-    if (server.argName(i) == "c") {
-      uint32_t tmp = (uint32_t) strtol(server.arg(i).c_str(), NULL, 10);
-      if (tmp >= 0x000000 && tmp <= 0xFFFFFF) {
-        //matrix.setColor(tmp);
-        uint32_t rgb_color = matrix.ColorHSV(tmp);
-        matrix.setTextColor(rgb_color);
-      }
-    }
-
-    if (server.argName(i) == "b") {
-      if (server.arg(i)[0] == '-') {
-        matrix.setBrightness(max(matrix.getBrightness() - 1, 0));
-      } else {
-        matrix.setBrightness(min(matrix.getBrightness() + 1, 60));
-      }
-      //Serial.print("brightness is "); Serial.println(matrix.getBrightness());
-    }
-  }
-  server.send(200, "text/plain", "OK");
+  request->send(200, "text/plain", "OK");
 }
 
 void OTA_Setup() {
