@@ -510,6 +510,7 @@ void loop() {
         happyDanceAnimation = true;
       }
     } else {
+      draw_rainbow_line();
       if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
         update_display();
         last_display_update_time = now_ms;
@@ -519,7 +520,6 @@ void loop() {
         last_pos_update_time = now_ms;
       }
       yield();
-      draw_rainbow_line();
       matrix.show();
     }
   }
@@ -546,24 +546,26 @@ void adjustBrightness() {
   setEvent(adjustBrightness, lightsReadingInterval());
 }
 
-const int danceLoops = 5;
+#define danceLoops 5
+
+// animationCounter is an incrementer to keep track of ticks so we can set the time of our animation frames
+// Each loop counts to animationCounter and then changes to the next sprite
 void deposit_animation() {
   //Serial.println("Updating display");
-  int pos_mod = animationCounter % MATRIX_HEIGHT / 4;
   matrix.clear();
   display_rgbBitmap(sprite % 3, 0, 0);
   matrix.setCursor(9, 0);
   float hntVal = last_wallet_deposit * oracle_price;
   String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT (worth $" + String(hntVal, 2) + ") ";
-  int pos = sprite % deposit_string.length();
+  int pos = sprite % deposit_string.length(); // Keep incrementing along the length of the string and wrap what is to the right of the pos back around
   if (pos > 0) {
     deposit_string = deposit_string.substring(pos) + deposit_string.substring(0, pos - 1);
   }
-  matrix.print(deposit_string);
+  matrix.print(deposit_string); // Display the string
   matrix.show();
-  if (animationCounter == 30) {
-    animationCounter = 0;
-    sprite++;
+  if (animationCounter == 30) { // 30 ticks per frame
+    animationCounter = 0; // reset the animation counter
+    sprite++; // move to the next sprite
     if (sprite > danceLoops * int(deposit_string.length() / 2)) { // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
       happyDanceAnimation = false;
