@@ -175,8 +175,8 @@ Card clock_mode_card(&dashboard, BUTTON_CARD, "Clock Mode");
   Format - (Dashboard Instance, Card Type, Card Name, Card Symbol(optional), int min, int max)
 */
 Card brightness_card(&dashboard, SLIDER_CARD, "Brightness", "", 0, 255);
-File colorpicker = SPIFFS.open("/tinycolorpicker.js", "r");
-File indexhtml = SPIFFS.open("/index.html", "r");
+//File colorpicker = SPIFFS.open("/tinycolorpicker.js", "r");
+//File indexhtml = SPIFFS.open("/index.html", "r");
 
 void setup() {
   // put your setup code here, to run once:
@@ -250,6 +250,7 @@ void setup() {
 
   //timeClient.begin();
 
+  EEPROM.begin(10);
   EEPROM_read();
 
   setUpDashboard();
@@ -277,9 +278,10 @@ void setUpDashboard() {
     Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
     /* Make sure we update our button's value and send update to dashboard */
     display_oracle_price = value;
-    EEPROM.write(display_oracle_price_EEPROM, display_oracle_price);
+    EEPROM.put(display_oracle_price_EEPROM, display_oracle_price);
     oracle_price_card.update(value);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
 
   work_equivalent_card.attachCallback([&](bool value) {
@@ -290,6 +292,7 @@ void setUpDashboard() {
     EEPROM.write(work_equivalent_EEPROM, display_work_equivalent);
     work_equivalent_card.update(value);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
 
   daily_total_card.attachCallback([&](bool value) {
@@ -300,6 +303,7 @@ void setUpDashboard() {
     EEPROM.write(display_daily_EEPROM, display_daily_total);
     daily_total_card.update(value);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
 
   thirty_day_total_card.attachCallback([&](bool value) {
@@ -310,6 +314,7 @@ void setUpDashboard() {
     EEPROM.write(display_thirty_day_EEPROM, display_thirty_day_total);
     thirty_day_total_card.update(value);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
 
   wallet_value_card.attachCallback([&](bool value) {
@@ -320,6 +325,7 @@ void setUpDashboard() {
     EEPROM.write(display_wallet_EEPROM, display_wallet_value);
     wallet_value_card.update(value);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
 
 
@@ -332,6 +338,7 @@ void setUpDashboard() {
     matrix.setBrightness(display_brightness);
     brightness_card.update(display_brightness);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
 
 
@@ -343,8 +350,9 @@ void setUpDashboard() {
     EEPROM.write(clock_mode_EEPROM, clockMode);
     clock_mode_card.update(value);
     dashboard.sendUpdates();
+    EEPROM.commit();
   });
-
+    
   work_equivalent_card.update(display_work_equivalent);
   oracle_price_card.update(display_oracle_price);
   wallet_value_card.update(display_wallet_value);
@@ -379,13 +387,13 @@ time_t lightsReadingInterval() {
 }
 
 void EEPROM_read() {
-  display_work_equivalent = bool(EEPROM.read(work_equivalent_EEPROM));
-  display_oracle_price = bool(EEPROM.read(display_oracle_EEPROM));
-  display_wallet_value = bool(EEPROM.read(display_wallet_EEPROM));
-  display_thirty_day_total = bool(EEPROM.read(display_thirty_day_EEPROM));
-  display_daily_total = bool(EEPROM.read(display_daily_EEPROM));
-  display_brightness = byte(EEPROM.read(display_brightness_EEPROM));
-  clockMode = bool(EEPROM.read(clockMode_EEPROM));
+  EEPROM.get(work_equivalent_EEPROM,display_work_equivalent);
+  EEPROM.get(display_oracle_price_EEPROM, display_oracle_price);
+  EEPROM.get(display_wallet_EEPROM,display_wallet_value);
+  EEPROM.get(display_thirty_day_EEPROM,display_thirty_day_total);
+  EEPROM.get(display_daily_EEPROM,display_daily_total);
+  EEPROM.get(display_brightness_EEPROM,display_brightness);
+  EEPROM.get(clock_mode_EEPROM,clockMode);
 }
 
 /*
