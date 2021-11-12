@@ -554,7 +554,7 @@ void deposit_animation() {
   display_rgbBitmap(sprite % 3, 0, 0);
   matrix.setCursor(9, 0);
   float hntVal = last_wallet_deposit * oracle_price;
-  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT (worth $" + String(hntVal, 2) + ")";
+  String deposit_string = "We made " + String(last_wallet_deposit, 6) + " HNT (worth $" + String(hntVal, 2) + ") ";
   int pos = sprite % deposit_string.length();
   if (pos > 0) {
     deposit_string = deposit_string.substring(pos) + deposit_string.substring(0, pos - 1);
@@ -615,7 +615,7 @@ String build_display_string(int disp_clock) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
   }
   if (display_work_equivalent) {
-    temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total / 120 * oracle_price, 2) + "/hr";
+    temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total / 160 * oracle_price, 2) + "/hr";
   }
   if (temp_display_string == "  " || clockMode) {
     temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
