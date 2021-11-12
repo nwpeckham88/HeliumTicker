@@ -262,29 +262,31 @@ void setup() {
   //Serial.println("getting data");
   matrix.setBrightness(display_brightness);
   check_wifi();                         // Ensure WiFi is connected (it should be, we just started it), and set up event to check continuosly
-  
+
   get_daily_total();                    // This will ensure we have some data, and then set up the event to continuously update
   get_wallet_value();                   // the values from the API
   get_thirty_day_total();
   get_oracle_price();
   //get_last_activity();
-  
+
   scroll_text();                        // Update the display string and slide it over if its time
   //adjustBrightness();                   // adjust brightness based on light (NOT IMPLEMENTED)
   update_display();                     // Blit the display
   //setEvent( get_daily_total,updateInterval() );
-  setEvent(adjustBrightness, nightAndDayTime());
+  //setEvent(adjustBrightness, nightAndDayTime());
   //Serial.println("ready!");
 }
 
-void nightAndDayTime(){
-  
+time_t nightAndDayTime() {
+  return Omaha.now() + 10000;
 }
 
-void updateSunriseSunset(){
-  
+void updateSunriseSunset() {
+
 }
 
+
+// Callbacks for 
 void setUpDashboard() {
   /* Attach Button Callback */
   oracle_price_card.attachCallback([&](bool value) {
@@ -377,9 +379,9 @@ void setUpDashboard() {
     dashboard.sendUpdates();
     EEPROM.commit();
   });
-  
 
-  
+
+
   work_equivalent_card.update(display_work_equivalent);
   oracle_price_card.update(display_oracle_price);
   wallet_value_card.update(display_wallet_value);
@@ -414,13 +416,13 @@ time_t lightsReadingInterval() {
 }
 
 void EEPROM_read() {
-  EEPROM.get(work_equivalent_EEPROM,display_work_equivalent);
+  EEPROM.get(work_equivalent_EEPROM, display_work_equivalent);
   EEPROM.get(display_oracle_price_EEPROM, display_oracle_price);
-  EEPROM.get(display_wallet_EEPROM,display_wallet_value);
-  EEPROM.get(display_thirty_day_EEPROM,display_thirty_day_total);
-  EEPROM.get(display_daily_EEPROM,display_daily_total);
-  EEPROM.get(display_brightness_EEPROM,display_brightness);
-  EEPROM.get(clock_mode_EEPROM,clockMode);
+  EEPROM.get(display_wallet_EEPROM, display_wallet_value);
+  EEPROM.get(display_thirty_day_EEPROM, display_thirty_day_total);
+  EEPROM.get(display_daily_EEPROM, display_daily_total);
+  EEPROM.get(display_brightness_EEPROM, display_brightness);
+  EEPROM.get(clock_mode_EEPROM, clockMode);
 }
 
 /*
