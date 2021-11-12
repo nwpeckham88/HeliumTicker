@@ -34,6 +34,7 @@
 #include <ArduinoOTA.h>
 #include "WiFiSetup.h"
 #include "BMP.h"
+#include <Dusk2Dawn.h>
 
 #include <ezTime.h>
 
@@ -52,6 +53,7 @@
 #define display_brightness_EEPROM 5
 #define display_oracle_price_EEPROM 6
 #define clock_mode_EEPROM 7
+#define night_dim_EEPROM 8
 
 // This could also be defined as matrix->color(255,0,0) but those defines
 // are meant to work for adafruit_gfx backends that are lacking color()
@@ -141,6 +143,7 @@ bool display_daily_total = true;
 bool display_thirty_day_total = true;
 bool display_oracle_price = true;
 bool clockMode = false;
+bool nightDim = true;
 
 float daily_total = 0;
 float wallet_value = 0;
@@ -159,7 +162,7 @@ boolean initializedWalletValue = false;
 String display_string;
 
 Timezone Omaha;
-
+Dusk2Dawn omahaD2D(41.178988079953605, -96.167178159826, -6);
 /*
   Button Card
   Format - (Dashboard Instance, Card Type, Card Name)
@@ -170,6 +173,7 @@ Card daily_total_card(&dashboard, BUTTON_CARD, "Show 24hr Total");
 Card thirty_day_total_card(&dashboard, BUTTON_CARD, "Show 30 Day Total");
 Card wallet_value_card(&dashboard, BUTTON_CARD, "Show Wallet Value");
 Card clock_mode_card(&dashboard, BUTTON_CARD, "Clock Mode");
+Card night_dim_card(&dashboard, BUTTON_CARD, "Night Dim");
 /*
   Slider Card
   Format - (Dashboard Instance, Card Type, Card Name, Card Symbol(optional), int min, int max)
@@ -250,25 +254,35 @@ void setup() {
 
   //timeClient.begin();
 
-  EEPROM.begin(10);
-  EEPROM_read();
+  EEPROM.begin(10);                     // Initialize EEPROM (or EEPROM emulation on the ESP8266)
+  EEPROM_read();                        // Read stored values
 
-  setUpDashboard();
+  setUpDashboard();                     // Set up dashboard callbacks
 
   //Serial.println("getting data");
   matrix.setBrightness(display_brightness);
-  check_wifi();
-  get_daily_total(); // This will ensure we have some data, and then set up the event to continuously update
-  get_wallet_value();
+  check_wifi();                         // Ensure WiFi is connected (it should be, we just started it), and set up event to check continuosly
+  
+  get_daily_total();                    // This will ensure we have some data, and then set up the event to continuously update
+  get_wallet_value();                   // the values from the API
   get_thirty_day_total();
   get_oracle_price();
   //get_last_activity();
-  scroll_text();
-  adjustBrightness();
-  update_display();
+  
+  scroll_text();                        // Update the display string and slide it over if its time
+  //adjustBrightness();                   // adjust brightness based on light (NOT IMPLEMENTED)
+  update_display();                     // Blit the display
   //setEvent( get_daily_total,updateInterval() );
-
+  setEvent(adjustBrightness, nightAndDayTime());
   //Serial.println("ready!");
+}
+
+void nightAndDayTime(){
+  
+}
+
+void updateSunriseSunset(){
+  
 }
 
 void setUpDashboard() {
@@ -352,7 +366,20 @@ void setUpDashboard() {
     dashboard.sendUpdates();
     EEPROM.commit();
   });
-    
+
+  night_dim_card.attachCallback([&](bool value) {
+    /* Print our new button value received from dashboard */
+    Serial.println("Button Triggered: " + String((value) ? "true" : "false"));
+    /* Make sure we update our button's value and send update to dashboard */
+    nightDim = value;
+    EEPROM.write(night_dim_EEPROM, nightDim);
+    night_dim_card.update(value);
+    dashboard.sendUpdates();
+    EEPROM.commit();
+  });
+  
+
+  
   work_equivalent_card.update(display_work_equivalent);
   oracle_price_card.update(display_oracle_price);
   wallet_value_card.update(display_wallet_value);
