@@ -263,16 +263,16 @@ void setup() {
   //Serial.println("Omaha time: " + Omaha.dateTime());
 
   //timeClient.begin();
-
+  scrollInfoText("EEPROM");
   EEPROM.begin(10);                     // Initialize EEPROM (or EEPROM emulation on the ESP8266)
   EEPROM_read();                        // Read stored values
-
+  scrollInfoText("GOOD");
   setUpDashboard();                     // Set up dashboard callbacks
 
   //Serial.println("getting data");
   matrix.setBrightness(display_brightness);
   check_wifi();                         // Ensure WiFi is connected (it should be, we just started it), and set up event to check continuosly
-
+  scrollInfoText("Loading...");
   get_daily_total();                    // This will ensure we have some data, and then set up the event to continuously update
   get_wallet_value();                   // the values from the API
   get_thirty_day_total();
