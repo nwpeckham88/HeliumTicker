@@ -526,9 +526,7 @@ uint32_t wheel(byte wheelPos) {
 void loop() {
   //timeClient.update();
   //Serial.println(Omaha.dateTime(ISO8601));
-  yield();
   events();
-  yield();
   ArduinoOTA.handle();
   yield();
   // put your main code here, to run repeatedly:
@@ -539,16 +537,16 @@ void loop() {
     deposit_animation();
     animationCounter++;
   } else {
-    if (previous_wallet_value < wallet_value) {
-      if (initializedWalletValue) {
-        last_wallet_deposit = wallet_value - previous_wallet_value;
-        previous_wallet_value = wallet_value;
+    if (previous_wallet_value < wallet_value) { // If we made money, maybe....
+      if (initializedWalletValue) { // unless we just initialized our wallet value. If we have already loaded data...
+        last_wallet_deposit = wallet_value - previous_wallet_value; // Calculate the amount of the deposit
+        previous_wallet_value = wallet_value;                       // Update values
         //Serial.println("Starting Happy Dance animation");
         //Serial.println(previous_wallet_value);
         //Serial.println(wallet_value);
         //Serial.print("We made: ");
         //Serial.println(last_wallet_deposit);
-        happyDanceAnimation = true;
+        happyDanceAnimation = true;                                 // Make it dance!
       }
     } else {
       //matrix.clear();
@@ -570,13 +568,8 @@ void loop() {
   //delay(1000);
   matrix.show(); // Show our new display
 }
+
 int sprite = 0;
-
-void nightlySummary() {
-
-  setEvent(nightlySummary, hour(18));
-}
-
 void adjustBrightness() {
   //photocellReading = analogRead(PHOTOCELL_PIN);
   //Serial.println("Adjusting brightness");
