@@ -162,7 +162,7 @@ boolean initializedWalletValue = false;
 String display_string;
 
 Timezone Omaha;
-Dusk2Dawn omahaD2D(41.178988079953605, -96.167178159826, -6);
+//Dusk2Dawn omahaD2D(41.178988079953605, -96.167178159826, -6);
 /*
   Button Card
   Format - (Dashboard Instance, Card Type, Card Name)
