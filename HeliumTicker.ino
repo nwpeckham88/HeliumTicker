@@ -3,7 +3,6 @@
 #include <WebServer.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#define WEB_SERVER WebServer
 #define ESP_RESET ESP.restart()
 #else
 #include <ESP8266WiFi.h>
@@ -11,33 +10,37 @@
 #include <ESPAsyncWebServer.h>
 //#include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
-#define WEB_SERVER ESP8266WebServer
 #define ESP_RESET ESP.reset()
 #endif
-
-#include <EEPROM.h>
-#include <ESPDash.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_NeoMatrix.h>
-#include <Adafruit_NeoPixel.h>
 #ifndef PSTR
 #define PSTR // Make Arduino Due happy
 #endif
 
-#include "FS.h"
+// EEPROM Read/Write Library
+#include <EEPROM.h>
+// Web Dashboard. Uses ESP8266AsyncWebServer
+#include <ESPDash.h>
+// Adafruit GFX for WS2812B LED Matrix
+#include <Adafruit_GFX.h>
+#include <Adafruit_NeoMatrix.h>
+#include <Adafruit_NeoPixel.h>
 
+#include "FS.h"
 
 // WiFi Password and Hotspot/Account info (not exactly sensitive, but personal)
 #include "sensitive.h"
 
+// OTA Libraries
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include "WiFiSetup.h"
-#include "BMP.h"
-#include <Dusk2Dawn.h>
 
+// Mario BMP
+#include "BMP.h"
+
+// NTP Server time and events library
 #include <ezTime.h>
 
+// JSON Serialization/Deserialization
 #include <ArduinoJson.h>
 
 #define DEFAULT_COLOR 0xAA59AA
@@ -46,6 +49,8 @@
 #define DEFAULT_MODE FX_MODE_STATIC
 #define STEPS_PER_DISPLAY_UPDATE 1000
 
+
+// EEPROM Locations
 #define work_equivalent_EEPROM 1
 #define display_wallet_EEPROM 2
 #define display_daily_EEPROM 3
@@ -104,13 +109,14 @@ extern const char main_js[];
 #define max(a,b) ((a)>(b)?(a):(b))
 #define bool_to_str(a) ((a)?("true"):("false"))
 
+// Pin for photocell. Not implemented.
 #define PHOTOCELL_PIN A0
+// Pin for matrix
 #define MATRIX_PIN D5
 #define MATRIX_WIDTH 32
 #define MATRIX_HEIGHT 8
 
 #define HTTP_PORT 80
-
 HTTPClient http;
 
 // MATRIX DECLARATION:
@@ -121,14 +127,14 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(MATRIX_WIDTH, MATRIX_HEIGHT, MATR
 //WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 /* Start Webserver */
 AsyncWebServer server(80);
-
 /* Attach ESP-DASH to AsyncWebServer */
 ESPDash dashboard(&server);
 
+
 #define WIFI_TIMEOUT 30000              // checks WiFi every ...ms. Reset after this time, if WiFi cannot reconnect.
 #define DISPLAY_UPDATE_INTERVAL 100
-int scroll_speed = 500;
-int scroll_pos = 0;
+int scroll_speed = 500;                 // Steps between scrolls. Lower = Faster
+int scroll_pos = 0;                     // Incrementer
 
 int photocellReading  = 0;
 
@@ -137,6 +143,8 @@ unsigned long last_wifi_check_time = 0;
 unsigned long last_display_update_time = 0;
 unsigned long last_pos_update_time = 0;
 
+
+// State variables for stats
 bool display_work_equivalent = true;
 bool display_wallet_value = true;
 bool display_daily_total = true;
@@ -145,6 +153,7 @@ bool display_oracle_price = true;
 bool clockMode = false;
 bool nightDim = true;
 
+// Stats
 float daily_total = 0;
 float wallet_value = 0;
 float previous_wallet_value = 0;
@@ -162,7 +171,6 @@ boolean initializedWalletValue = false;
 String display_string;
 
 Timezone Omaha;
-//Dusk2Dawn omahaD2D(41.178988079953605, -96.167178159826, -6);
 /*
   Button Card
   Format - (Dashboard Instance, Card Type, Card Name)
@@ -244,10 +252,12 @@ void setup() {
   setInterval(60 * 60);
   //setDebug(INFO);
 
+  // Watis for NTP server to be synced
   waitForSync();
 
   //Serial.println("UTC: " + UTC.dateTime());
 
+  // Tell the NTP server where we are, and make it the default timezone.
   Omaha.setLocation("America/Chicago");
   Omaha.setDefault();
   //Serial.println("Omaha time: " + Omaha.dateTime());
@@ -286,7 +296,7 @@ void updateSunriseSunset() {
 }
 
 
-// Callbacks for 
+// Callbacks for dashboard cards
 void setUpDashboard() {
   /* Attach Button Callback */
   oracle_price_card.attachCallback([&](bool value) {
