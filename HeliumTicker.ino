@@ -626,8 +626,8 @@ void update_display() {
   //Serial.println("Updating display");
   matrix.setCursor(0, 0);
   matrix.clear();
+  draw_rainbow_line();              /// Rainbow line under the display string
   matrix.print(display_string);
-  draw_rainbow_line();
   matrix.show();
   //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 }
@@ -639,7 +639,7 @@ void scroll_text() {
 }
 
 String build_display_string(int disp_clock) {
-  String temp_display_string = "  ";
+  String temp_display_string = " ";
   if (display_daily_total) {
     temp_display_string = temp_display_string + "24Hrs:" + daily_total;
   }
@@ -656,7 +656,7 @@ String build_display_string(int disp_clock) {
   if (display_work_equivalent) {
     temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total / 160 * oracle_price, 2) + "/hr";
   }
-  if (temp_display_string == "  " || clockMode) {
+  if (temp_display_string == " " || clockMode) {
     temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
   }
   int pos = disp_clock % temp_display_string.length();
@@ -665,7 +665,7 @@ String build_display_string(int disp_clock) {
     temp_display_string = temp_display_string.substring(pos) + temp_display_string.substring(0, pos - 1);
   }
 
-  //display_string += "  ";
+  //display_string += " ";
 
   //Serial.println(display_string);
   return temp_display_string;
