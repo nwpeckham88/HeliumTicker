@@ -390,8 +390,7 @@ void setUpDashboard() {
     EEPROM.commit();
   });
 
-
-
+  // Update the state of the web display with our current state
   work_equivalent_card.update(display_work_equivalent);
   oracle_price_card.update(display_oracle_price);
   wallet_value_card.update(display_wallet_value);
@@ -401,6 +400,7 @@ void setUpDashboard() {
   clock_mode_card.update(clockMode);
 }
 
+// Used to set the interval that data is refreshed
 time_t updateInterval() {
 
   time_t event_time = Omaha.now() + (20 * (60)); // x*(60) = x minutes between updates
@@ -409,6 +409,7 @@ time_t updateInterval() {
   return event_time;
 }
 
+// Used to set the interval that failed data retrieval is retried
 time_t retryUpdateInterval() {
 
   time_t event_time = Omaha.now() + 20; // Retry in 20 seconds
@@ -417,7 +418,7 @@ time_t retryUpdateInterval() {
   return event_time;
 }
 
-
+// Used to set the interval that the lights are sampled. NOT IMPLEMENTED
 time_t lightsReadingInterval() {
   time_t event_time = Omaha.now() + (5 * (60)); // x*(60) = x minutes between updates
   //Serial.println(event_time);
@@ -425,6 +426,7 @@ time_t lightsReadingInterval() {
   return event_time;
 }
 
+// Read in the saved state from EEPROM
 void EEPROM_read() {
   EEPROM.get(work_equivalent_EEPROM, display_work_equivalent);
   EEPROM.get(display_oracle_price_EEPROM, display_oracle_price);
@@ -472,7 +474,7 @@ void wifi_setup() {
   //Serial.println();
 }
 
-
+// Scrolls text across the matrix. Call continuously and it will manage the speed
 void scrollInfoText(String text) {
   static int infoScrollPos = 0;
   matrix.clear();
@@ -491,6 +493,8 @@ void scrollInfoText(String text) {
   }
 
 }
+
+
 
 uint16_t firstPixelHue = 0;
 byte wheel_pos = 0;
@@ -528,10 +532,14 @@ uint32_t wheel(byte wheelPos) {
 void loop() {
   //timeClient.update();
   //Serial.println(Omaha.dateTime(ISO8601));
+  yield();
   events();
+  yield();
   ArduinoOTA.handle();
+  yield();
   // put your main code here, to run repeatedly:
   unsigned long now_ms = millis();
+  yield();
   if (happyDanceAnimation) {
     //TODO: Fancy animation because we made money
     deposit_animation();
@@ -610,6 +618,7 @@ void deposit_animation() {
       happyDanceAnimation = false;
     }
   }
+  yield();
 }
 //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 
@@ -652,6 +661,7 @@ String build_display_string(int disp_clock) {
   if (display_wallet_value) {
     temp_display_string = temp_display_string + " Wallet:" + String(wallet_value, 2);
   }
+  yield();
   if (display_oracle_price) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
   }
@@ -687,7 +697,7 @@ void get_daily_total() {
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
-
+    yield();
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
@@ -728,7 +738,7 @@ void get_wallet_value() {
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
-
+    yield();
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
@@ -780,7 +790,7 @@ void get_thirty_day_total() {
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
-
+    yield();
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
@@ -821,7 +831,7 @@ void get_oracle_price() {
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
-
+    yield();
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
@@ -864,7 +874,7 @@ void get_binance_price() {
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
-
+    yield();
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
@@ -908,7 +918,7 @@ void get_last_activity() {
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
-
+    yield();
     if (httpCode > 0) { //Check the returning code
 
       String payload = http.getString();   //Get the request response payload
@@ -1011,6 +1021,7 @@ void display_rgbBitmap(uint8_t bmp_num, uint8_t x, uint8_t y) {
 void fixdrawRGBBitmap(int16_t x, int16_t y, const uint16_t *bitmap, int16_t w, int16_t h) {
   uint16_t RGB_bmp_fixed[w * h];
   for (uint16_t pixel = 0; pixel < w * h; pixel++) {
+    yield();
     uint8_t r, g, b;
     uint16_t color = pgm_read_word(bitmap + pixel);
 
