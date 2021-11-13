@@ -494,21 +494,15 @@ void scrollInfoText(String text) {
 
 }
 
-
-
 uint16_t firstPixelHue = 0;
 byte wheel_pos = 0;
-int time_stagger = 10;
+int time_stagger = 2;
 int time_stagger_counter = 0;
 
 void draw_rainbow_line() {
-
   //firstPixelHue += 64; // Advance just a little along the color wheel
-  if (++time_stagger_counter > time_stagger) {
-    wheel_pos++;
-    //matrix.show();
-    time_stagger_counter = 0;
-  }
+  wheel_pos++;
+  //matrix.show();
   for (int i = 0; i < MATRIX_WIDTH; i++) { // For each pixel in row...
     //int pixelHue = firstPixelHue + (i * 64*8);
     //matrix.drawPixel(i,MATRIX_HEIGHT -1,matrix.gamma32(matrix.ColorHSV(pixelHue,255,255)));
@@ -557,7 +551,8 @@ void loop() {
         happyDanceAnimation = true;
       }
     } else {
-      draw_rainbow_line();
+      //matrix.clear();
+      //draw_rainbow_line();
       if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
         update_display();
         last_display_update_time = now_ms;
@@ -567,13 +562,13 @@ void loop() {
         last_pos_update_time = now_ms;
       }
       yield();
-      matrix.show();
     }
   }
   //  if (display_clock % 600 == 0) {
   //    get_daily_total();
   //  }
   //delay(1000);
+  matrix.show(); // Show our new display
 }
 int sprite = 0;
 
@@ -636,11 +631,11 @@ void check_wifi() {
 
 void update_display() {
   //Serial.println("Updating display");
-  matrix.fillScreen(0);
   matrix.setCursor(0, 0);
+  matrix.clear();
   matrix.print(display_string);
-  //draw_rainbow_line();
-  //matrix.show();
+  draw_rainbow_line();
+  matrix.show();
   //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 }
 
