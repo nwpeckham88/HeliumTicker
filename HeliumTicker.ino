@@ -1,4 +1,3 @@
-#include <arduino.h>
 #ifdef ARDUINO_ARCH_ESP32
 #include <WiFi.h>
 #include <WebServer.h>
