@@ -295,7 +295,6 @@ void updateSunriseSunset() {
 
 }
 
-
 // Callbacks for dashboard cards
 void setUpDashboard() {
   /* Attach Button Callback */
@@ -411,11 +410,13 @@ time_t updateInterval() {
 
 // Used to set the interval that failed data retrieval is retried
 time_t retryUpdateInterval() {
-
-  time_t event_time = Omaha.now() + 20; // Retry in 20 seconds
+  if (clockMode){
+    return updateInterval();      // Don't update so quickly to keep the scrolling more consistent
+  } else {
+    return Omaha.now() + 20; // Retry in 20 seconds
+  }
   //Serial.println(event_time);
   //Serial.println(Omaha.dateTime(event_time));
-  return event_time;
 }
 
 // Used to set the interval that the lights are sampled. NOT IMPLEMENTED
@@ -658,6 +659,9 @@ String build_display_string(int disp_clock) {
   }
   if (temp_display_string == " " || clockMode) {
     temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
+    if (Omaha.month() == 11 && Omaha.day() == 17){
+      temp_display_string += "---HAPPY BIRTHDAY KAREN!---";  
+    }
   }
   int pos = disp_clock % temp_display_string.length();
 
