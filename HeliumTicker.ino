@@ -15,7 +15,7 @@
 #ifndef PSTR
 #define PSTR // Make Arduino Due happy
 #endif
-
+#include <WebSerial.h>
 // EEPROM Read/Write Library
 #include <EEPROM.h>
 // Web Dashboard. Uses ESP8266AsyncWebServer
@@ -43,13 +43,16 @@
 // JSON Serialization/Deserialization
 #include <ArduinoJson.h>
 
+#define ARDUINOJSON_USE_LONG_LONG 1
+
 #define DEFAULT_COLOR 0xAA59AA
 #define DEFAULT_BRIGHTNESS 128
 #define DEFAULT_SPEED 1000
 #define DEFAULT_MODE FX_MODE_STATIC
 #define STEPS_PER_DISPLAY_UPDATE 1000
+#define ANIMATION_TEXT_LOOPS 3
 
-
+#define animationTextLoops 3
 // EEPROM Locations
 #define work_equivalent_EEPROM 1
 #define display_wallet_EEPROM 2
@@ -161,6 +164,7 @@ float thirty_day_total = 0;
 float witnesses = 0;
 float oracle_price = 0;
 float last_wallet_deposit = 0;
+float lastDayRewards[24];
 
 String last_activity_hash = "";
 
@@ -241,6 +245,9 @@ void setup() {
   });
   server.on("/fakeDeposit", srv_handle_fake_deposit);
   server.onNotFound(notFound);
+  WebSerial.begin(&server);
+    /* Attach Message Callback */
+  WebSerial.msgCallback(recvMsg);
   server.begin();
   //Serial.println("HTTP server started.");
 
@@ -277,8 +284,9 @@ void setup() {
   get_wallet_value();                   // the values from the API
   get_thirty_day_total();
   get_oracle_price();
+  update_daily_activity_bar_data();
   //get_last_activity();
-
+  update_activity_bar();
   scroll_text();                        // Update the display string and slide it over if its time
   //adjustBrightness();                   // adjust brightness based on light (NOT IMPLEMENTED)
   update_display();                     // Blit the display
@@ -408,9 +416,26 @@ time_t updateInterval() {
   return event_time;
 }
 
+// Used to set the interval that data is refreshed
+time_t activityUpdateInterval() {
+
+  time_t event_time = Omaha.now() + (5 * (60)); // x*(60) = x minutes between updates
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
+  return event_time;
+}
+
+time_t hourlyUpdateInterval() {
+
+  time_t event_time = Omaha.now() + (60 * (60)); // x*(60) = x minutes between updates
+  //Serial.println(event_time);
+  //Serial.println(Omaha.dateTime(event_time));
+  return event_time;
+}
+
 // Used to set the interval that failed data retrieval is retried
 time_t retryUpdateInterval() {
-  if (clockMode){
+  if (clockMode) {
     return updateInterval();      // Don't update so quickly to keep the scrolling more consistent
   } else {
     return Omaha.now() + 20; // Retry in 20 seconds
@@ -496,11 +521,11 @@ void scrollInfoText(String text) {
 }
 
 uint16_t firstPixelHue = 0;
-byte wheel_pos = 0;
 int time_stagger = 2;
 int time_stagger_counter = 0;
 
 void draw_rainbow_line() {
+  static byte wheel_pos = 0;
   //firstPixelHue += 64; // Advance just a little along the color wheel
   wheel_pos++;
   //matrix.show();
@@ -570,7 +595,6 @@ void loop() {
   matrix.show(); // Show our new display
 }
 
-int sprite = 0;
 void adjustBrightness() {
   //photocellReading = analogRead(PHOTOCELL_PIN);
   //Serial.println("Adjusting brightness");
@@ -582,11 +606,10 @@ void adjustBrightness() {
   setEvent(adjustBrightness, lightsReadingInterval());
 }
 
-#define danceLoops 5
-
 // animationCounter is an incrementer to keep track of ticks so we can set the time of our animation frames
 // Each loop counts to animationCounter and then changes to the next sprite
 void deposit_animation() {
+  static int sprite = 0;
   //Serial.println("Updating display");
   matrix.clear();
   display_rgbBitmap(sprite % 3, 0, 0);
@@ -602,7 +625,7 @@ void deposit_animation() {
   if (animationCounter == 30) { // 30 ticks per frame
     animationCounter = 0; // reset the animation counter
     sprite++; // move to the next sprite
-    if (sprite > danceLoops * int(deposit_string.length() / 2)) { // Subtract a couple ticks so it doesn't last quite as long.
+    if (sprite > ANIMATION_TEXT_LOOPS * deposit_string.length()) { // Subtract a couple ticks so it doesn't last quite as long.
       sprite = 0;
       happyDanceAnimation = false;
     }
@@ -627,7 +650,8 @@ void update_display() {
   //Serial.println("Updating display");
   matrix.setCursor(0, 0);
   matrix.clear();
-  draw_rainbow_line();              /// Rainbow line under the display string
+  //draw_rainbow_line();              /// Rainbow line under the display string
+  update_activity_bar();
   matrix.print(display_string);
   matrix.show();
   //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
@@ -659,8 +683,8 @@ String build_display_string(int disp_clock) {
   }
   if (temp_display_string == " " || clockMode) {
     temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
-    if (Omaha.month() == 11 && Omaha.day() == 17){
-      temp_display_string += "---HAPPY BIRTHDAY KAREN!---";  
+    if (Omaha.month() == 11 && Omaha.day() == 17) {
+      temp_display_string += "---HAPPY BIRTHDAY KAREN!---";
     }
   }
   int pos = disp_clock % temp_display_string.length();
@@ -760,7 +784,7 @@ void get_wallet_value() {
 
     } else {
       //Serial.println("Failed. Retrying in 20 seconds");
-      setEvent( get_wallet_value, retryUpdateInterval() );
+      setEvent( get_wallet_value, activityUpdateInterval() );
 
     }
 
@@ -894,6 +918,82 @@ void get_binance_price() {
     http.end();   //Close connection
   }
 }
+float dailyRewardsAvg = 0;
+float dailyRewardsSum = 0;
+void update_daily_activity_bar_data() {
+  static byte wheel_pos = 0;
+
+  //Serial.println("Fetching last activity");
+  if (WiFi.status() == WL_CONNECTED) { //Check WiFi connection status
+    String temp_activity_hash = "";
+
+    WiFiClientSecure client;
+    HTTPClient http;  //Declare an object of class HTTPClient
+    http.setTimeout(200);
+    const int httpPort = 443; // 80 is for HTTP / 443 is for HTTPS!
+
+    client.setInsecure(); // this is the magical line that makes everything work
+    //String query = "https://api.helium.io/v1/rewards/sum?bucket=hour&min_time=" + dateTime(makeTime(0, 0, 0, Omaha.day(), Omaha.month(), Omaha.year()), ISO8601); // To midnight
+    String query = "https://api.helium.io/v1/accounts/" + ACCOUNT_ADDRESS + "/rewards/sum?min_time=-1%20day&bucket=hour";   // 24hrs ago
+    //Serial.println(query);
+    http.begin(client, query); //Specify request destination
+    int httpCode = http.GET();                                  //Send the request
+    yield();
+    if (httpCode > 0) { //Check the returning code
+
+      //String payload = http.getString();   //Get the request response payload
+
+      StaticJsonDocument<200> filter;
+      filter["data"][0]["total"] = true;
+
+      StaticJsonDocument<1024> doc;
+      deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+      JsonArray da_data = doc["data"];
+
+      dailyRewardsSum = 0;
+      dailyRewardsAvg = 0;
+      for (int i = 0; i < 23; i++) {
+        lastDayRewards[i] = da_data[i]["total"];
+        dailyRewardsSum += lastDayRewards[i];
+        WebSerial.println(lastDayRewards[i]);
+      }
+      dailyRewardsAvg = dailyRewardsSum / 24.00;
+
+      setEvent( update_daily_activity_bar_data, hourlyUpdateInterval() );
+
+    } else {
+      //Serial.println("Failed. Retrying in 20 seconds");
+      setEvent( update_daily_activity_bar_data, retryUpdateInterval() );
+      WebSerial.println("Activity fetch fail");
+
+    }
+
+    http.end();   //Close connection
+  }
+}
+
+void update_activity_bar() {
+  for (int i = 0; i < 23; i++) {
+    float pixBrightness = floatMap(lastDayRewards[i] * 127.0,0,254,100,254);
+    
+    if (lastDayRewards[i] > 1) {
+      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(127, 255, (byte)pixBrightness));
+    } else if (lastDayRewards[i] > 0.5) {
+      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(10, 255, (byte)pixBrightness));
+    } else if (lastDayRewards[i] > 0.2) {
+      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(200, 255, (byte)pixBrightness));
+    } else {
+      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(255, 255, (byte)pixBrightness));
+    }
+  }
+
+  //matrix.show();
+}
+
+float floatMap(float x, float in_min, float in_max, float out_min, float out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 
 void get_last_activity() {
   //Serial.println("Fetching last activity");
@@ -957,6 +1057,16 @@ void srv_handle_fake_deposit(AsyncWebServerRequest * request) {
   request->send(200, "text/plain", "OK");
 }
 
+/* Message callback of WebSerial */
+void recvMsg(uint8_t *data, size_t len){
+  WebSerial.println("Received Data...");
+  String d = "";
+  for(int i=0; i < len; i++){
+    d += char(data[i]);
+  }
+  WebSerial.println(d);
+}
+
 void OTA_Setup() {
 
   // Hostname defaults to esp8266-[ChipID]
@@ -983,6 +1093,7 @@ void OTA_Setup() {
   });
   ArduinoOTA.onEnd([]() {
     //Serial.println("\nEnd");
+    ESP_RESET;
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     //Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
