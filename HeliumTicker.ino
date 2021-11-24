@@ -207,6 +207,7 @@ void setup() {
   matrix.clear();
   matrix.print("Starting...");
   matrix.show();
+  delay(500);
 
   //Serial.println("WS2812FX setup");
 
@@ -216,8 +217,11 @@ void setup() {
 
   //Serial.println("Wifi setup");
   wifi_setup();
-
+  matrix.setCursor(0, 0);
+  matrix.clear();
   matrix.print("WiFi Good");
+  matrix.show();
+  delay(200);
   //Serial.println("HTTP server setup");
   //server.on("/", srv_handle_index_html);
   //server.on("/", HTTP_GET, srv_handle_index_html);
@@ -246,11 +250,11 @@ void setup() {
   server.on("/fakeDeposit", srv_handle_fake_deposit);
   server.onNotFound(notFound);
   WebSerial.begin(&server);
-    /* Attach Message Callback */
+  /* Attach Message Callback */
   WebSerial.msgCallback(recvMsg);
   server.begin();
   //Serial.println("HTTP server started.");
-
+  WebSerial.println("STARTED");
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
   OTA_Setup();
@@ -425,8 +429,8 @@ time_t activityUpdateInterval() {
   return event_time;
 }
 
-time_t hourlyUpdateInterval() {
-
+time_t heatmapDataUpdateInterval() {
+  //time_t event_time = Omaha.now() + 60; // DEBUGGING
   time_t event_time = Omaha.now() + (60 * (60)); // x*(60) = x minutes between updates
   //Serial.println(event_time);
   //Serial.println(Omaha.dateTime(event_time));
@@ -533,6 +537,7 @@ void draw_rainbow_line() {
     //int pixelHue = firstPixelHue + (i * 64*8);
     //matrix.drawPixel(i,MATRIX_HEIGHT -1,matrix.gamma32(matrix.ColorHSV(pixelHue,255,255)));
     matrix.drawPixel(i, MATRIX_HEIGHT - 1, wheel(wheel_pos + i));
+    yield();
   }
 }
 
@@ -580,10 +585,12 @@ void loop() {
       if (now_ms - last_display_update_time > DISPLAY_UPDATE_INTERVAL) {
         update_display();
         last_display_update_time = now_ms;
+        WebSerial.println("Updating Display");
       }
       if (now_ms - last_pos_update_time > scroll_speed) {
         scroll_text();
         last_pos_update_time = now_ms;
+        WebSerial.println("Scrolling");
       }
       yield();
     }
@@ -650,9 +657,11 @@ void update_display() {
   //Serial.println("Updating display");
   matrix.setCursor(0, 0);
   matrix.clear();
+  yield();
   //draw_rainbow_line();              /// Rainbow line under the display string
-  update_activity_bar();
+  update_activity_bar();              // Heatmap for last day activity
   matrix.print(display_string);
+  yield();
   matrix.show();
   //setEvent(update_display,Omaha.now() + DISPLAY_UPDATE_INTERVAL);
 }
@@ -668,9 +677,11 @@ String build_display_string(int disp_clock) {
   if (display_daily_total) {
     temp_display_string = temp_display_string + "24Hrs:" + daily_total;
   }
+  yield();
   if (display_thirty_day_total) {
     temp_display_string = temp_display_string + " Month:" + thirty_day_total;
   }
+  yield();
   if (display_wallet_value) {
     temp_display_string = temp_display_string + " Wallet:" + String(wallet_value, 2);
   }
@@ -678,9 +689,11 @@ String build_display_string(int disp_clock) {
   if (display_oracle_price) {
     temp_display_string = temp_display_string + " HNT Value:$" + oracle_price;
   }
+  yield();
   if (display_work_equivalent) {
     temp_display_string = temp_display_string + " 40hrs/wk:$" + String(thirty_day_total / 160 * oracle_price, 2) + "/hr";
   }
+  yield();
   if (temp_display_string == " " || clockMode) {
     temp_display_string = Omaha.dateTime("l ~t~h~e jS ~o~f F Y, g:i A ");
     if (Omaha.month() == 11 && Omaha.day() == 17) {
@@ -709,7 +722,7 @@ void get_daily_total() {
     http.setTimeout(200);
     client.setInsecure(); // this is the magical line that makes everything work
     time_t day_ago = Omaha.now() - 86400;
-    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(day_ago, ISO8601);
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?min_time=-1%20day";
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
@@ -802,7 +815,7 @@ void get_thirty_day_total() {
 
     client.setInsecure(); // this is the magical line that makes everything work
     time_t month_ago = Omaha.now() - 86400 * 30;
-    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?max_time=" + Omaha.dateTime(ISO8601) + "&min_time=" + Omaha.dateTime(month_ago, ISO8601);
+    String query = "https://api.helium.io/v1/hotspots/" + HOTSPOT_ADDRESS + "/rewards/sum?min_time=" + Omaha.dateTime(month_ago, ISO8601);
     //Serial.println(query);
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
@@ -939,15 +952,17 @@ void update_daily_activity_bar_data() {
     http.begin(client, query); //Specify request destination
     int httpCode = http.GET();                                  //Send the request
     yield();
+    WebSerial.println("Fetching activity data");
     if (httpCode > 0) { //Check the returning code
 
       //String payload = http.getString();   //Get the request response payload
-
+      WebSerial.println("Fetch successful");
       StaticJsonDocument<200> filter;
       filter["data"][0]["total"] = true;
 
       StaticJsonDocument<1024> doc;
       deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+      //serializeJsonPretty(doc, WebSerial);
       JsonArray da_data = doc["data"];
 
       dailyRewardsSum = 0;
@@ -955,11 +970,10 @@ void update_daily_activity_bar_data() {
       for (int i = 0; i < 23; i++) {
         lastDayRewards[i] = da_data[i]["total"];
         dailyRewardsSum += lastDayRewards[i];
-        WebSerial.println(lastDayRewards[i]);
       }
       dailyRewardsAvg = dailyRewardsSum / 24.00;
 
-      setEvent( update_daily_activity_bar_data, hourlyUpdateInterval() );
+      setEvent( update_daily_activity_bar_data, heatmapDataUpdateInterval() );
 
     } else {
       //Serial.println("Failed. Retrying in 20 seconds");
@@ -974,17 +988,21 @@ void update_daily_activity_bar_data() {
 
 void update_activity_bar() {
   for (int i = 0; i < 23; i++) {
-    float pixBrightness = floatMap(lastDayRewards[i] * 127.0,0,254,100,254);
-    
-    if (lastDayRewards[i] > 1) {
-      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(127, 255, (byte)pixBrightness));
-    } else if (lastDayRewards[i] > 0.5) {
-      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(10, 255, (byte)pixBrightness));
-    } else if (lastDayRewards[i] > 0.2) {
-      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(200, 255, (byte)pixBrightness));
-    } else {
-      matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(255, 255, (byte)pixBrightness));
-    }
+    //float hue = (lastDayRewards[i] / dailyRewardsAvg) * 127.0;
+    //float pixBrightness = floatMap(hue, 0.0, 254.0, 210.0, 254.0);
+    // matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(0, 255, (byte)pixBrightness));
+    float reward = lastDayRewards[i];
+    WebSerial.println(reward);
+    //if (reward > 1) {
+    //  matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(120, 255, 255));
+    //} /*else /*if (lastDayRewards[i] > 0.5) {
+    //  matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(180, 255, 255));
+    //} else if (lastDayRewards[i] > 0.2) {
+    //  matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(240, 255, 255));
+    //} */ else  {
+    matrix.drawPixel(i + 4, MATRIX_HEIGHT - 1, matrix.ColorHSV(120, floatMap(reward, 0.0, 2, 0, 100), 10));
+    //}
+
   }
 
   //matrix.show();
@@ -1058,10 +1076,10 @@ void srv_handle_fake_deposit(AsyncWebServerRequest * request) {
 }
 
 /* Message callback of WebSerial */
-void recvMsg(uint8_t *data, size_t len){
+void recvMsg(uint8_t *data, size_t len) {
   WebSerial.println("Received Data...");
   String d = "";
-  for(int i=0; i < len; i++){
+  for (int i = 0; i < len; i++) {
     d += char(data[i]);
   }
   WebSerial.println(d);
